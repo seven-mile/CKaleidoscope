@@ -6,6 +6,7 @@
 
 namespace zMile {
 
+// ((C6H7O2)===(ONO2)3)n qwq
 class FileSugar
 {
   std::istream& file;
@@ -18,6 +19,7 @@ public:
 
   char operator~() { return last_char; }
   char operator!() { return last_char = file.get(); }
+  void reset() { last_char = ' '; }
 };
 
 }
