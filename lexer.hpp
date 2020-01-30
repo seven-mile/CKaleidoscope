@@ -34,22 +34,22 @@ const std::string map_tok[] = {
   "Literal Char", "Literal String", "Other Lang Tool"
 };
 
-struct TokenWrapper {
+struct Token {
   tag_tok type;
   std::any val;
 
-  TokenWrapper(tag_tok type) : type(type),
+  Token(tag_tok type) : type(type),
     val(std::string("no value")) {  }
   template <class token_t>
-  TokenWrapper(tag_tok type, const token_t& cont)
+  Token(tag_tok type, const token_t& cont)
     : type(type), val(token_t(cont)) {  }
-  TokenWrapper(const TokenWrapper& rhs) = default;
-  TokenWrapper(TokenWrapper&& rhs) = default;
-  TokenWrapper& operator=(TokenWrapper &&rhs) = default;
+  Token(const Token& rhs) = default;
+  Token(Token&& rhs) = default;
+  Token& operator=(Token &&rhs) = default;
     // { type = rhs.type, val = rhs.val; return *this; }
-  // bool operator==(TokenWrapper &&rhs) const
+  // bool operator==(Token &&rhs) const
     // { return type == rhs.type && val == rhs.val; }
-  ~TokenWrapper() {  }
+  ~Token() {  }
 
   void print() {
     std::cerr << "{ " << map_tok[type] << ", ";
@@ -60,14 +60,14 @@ struct TokenWrapper {
 };
 
 
-class LexerHelper {
+class Lexer {
   FileSugar file;
   std::string tmp_str;
   double num;
   bool submitted = false, cmd;
 
 public:
-  LexerHelper(FileSugar file, bool cmd = false) : file(file), cmd(cmd) {}
+  Lexer(FileSugar file, bool cmd = false) : file(file), cmd(cmd) {}
 
   inline bool isenter(char ch) { return ch == '\r' || ch == '\n'; }
   // Not EnTer But SPace
@@ -84,15 +84,17 @@ public:
     }
   }
 
-  TokenWrapper get_token()
+  Token get_token()
   {
     if (cmd && submitted) return submitted = false, tok_invalid;
     while (escape(~file)) !file;
 
     if (isenter(~file)) {
       if (~file == '\r') !file;
+      assert(~file == '\n');
       file.reset();
-      submitted = true;
+      // submitted = true;
+      return tok_invalid;
     }
 
     if (isalpha(~file) || ~file == '_') {

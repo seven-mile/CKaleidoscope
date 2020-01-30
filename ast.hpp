@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <vector>
+#include <functional>
 
 #include "lexer.hpp"
 
@@ -12,6 +13,18 @@ namespace zMile {
 inline auto log_err(const char* errinfo) {
   throw syntax_error(errinfo);
   return nullptr;
+}
+
+template <class T>
+inline void output_list(const std::vector<T>& v,
+                        std::function<void(const T&, std::ostream&)> output,
+                        std::ostream & os = std::cerr) {
+  if (v.empty()) return;
+  os << "[ ";
+  for (int idx = 0; idx < v.size() - 1; idx++)
+    output(v[idx], os), os << ", ";
+  output(v.back(), os);
+  os << " ]";
 }
 
 class Outputable {
@@ -90,11 +103,9 @@ public:
   CallExprNode(const std::string &func, std::vector<expr_t> args)
     : func(func), args(std::move(args)) {  }
   virtual void output(std::ostream & os = std::cerr) {
-    os << "{ CallExpr, \"func_name\": \"" << func << "\", \"args\":[ ";
-    for (size_t idx = 0; idx < args.size()-1; idx++)
-      args[idx]->output(), os << ", ";
-    args.back()->output();
-    os << " ] }";
+    os << "{ CallExpr, \"func_name\": \"" << func << "\", \"args\":";
+    output_list<expr_t>(args, [](auto &x, auto &os){ x->output(os); });
+    os << " }";
   }
 };
 
@@ -111,11 +122,8 @@ public:
   virtual void output(std::ostream & os = std::cerr) {
     os << "{ Prototype, \"id\": \"" << id << "\"";
     if (args.size()) {
-      os << ", \"args\": [ ";
-
-      for (size_t idx = 0; idx < args.size()-1; idx++)
-        os << '"' << args[idx] << "\", ";
-      os << '"' << args.back() << "\" ]";
+      os << ", \"args\": ";
+      output_list<std::string>(args, [](auto &x, auto &os){ os << '"' << x << '"'; });
     }
     os << " }";
   }

@@ -5,10 +5,10 @@
 
 int main()
 {
-  zMile::LexerHelper lex(std::cin, true);
-  zMile::ParserHelper par(lex);
+  zMile::Lexer lex(std::cin, true);
+  zMile::Parser par(lex);
 
-  par.read_stream(true);
+  par.read_stream();
 
   return 0;
 }

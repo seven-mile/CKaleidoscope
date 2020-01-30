@@ -11,9 +11,9 @@ std::map<char, int> map_op_prior
   {'*', 20}, {'/', 20}, {'%', 20},
 };
 
-class ParserHelper {
-  LexerHelper& lex;
-  TokenWrapper cur_tok = { tok_invalid, nullptr };
+class Parser {
+  Lexer& lex;
+  Token cur_tok = { tok_invalid, nullptr };
 
   inline void adv() { cur_tok = lex.get_token(); }
   inline int get_cur_prior() {
@@ -26,7 +26,7 @@ class ParserHelper {
   }
 
 public:
-  ParserHelper(LexerHelper& lex) : lex(lex) {  }
+  Parser(Lexer& lex) : lex(lex) {  }
 
   expr_t parse_num() {
     expr_t ptr = std::make_unique<NumExprNode>(
@@ -54,6 +54,8 @@ public:
     if (cur_tok.val.type() == typeid(char) && 
       std::any_cast<char>(cur_tok.val) != ')')
       return log_err("unexpected token, expected ')'.");
+
+    adv();
     
     return expr;
   }
@@ -85,7 +87,7 @@ public:
     return std::make_unique<CallExprNode>(id, std::move(args));
   }
 
-  expr_t parse_prim() {
+  expr_t parse_prim(bool hasSign = false) {
     if (cur_tok.type == tok_id)
       return parse_id();
     if (cur_tok.type == tok_lit_num)
@@ -96,6 +98,16 @@ public:
       return parse_str();
     if (any_eq_char(cur_tok.val, '('))
       return parse_paren();
+    if (!hasSign && cur_tok.type == tok_other) {
+      if (any_eq_char(cur_tok.val, '+')) {
+        auto expr = (adv(), parse_prim(true));
+        return expr;
+      }
+      if (any_eq_char(cur_tok.val, '-')) {
+        auto expr = (adv(), parse_prim(true));
+        return std::make_unique<BinExprNode>('*', std::make_unique<NumExprNode>(-1), std::move(expr));
+      }
+    }
     return log_err("identify expr token failed.");
   }
 
@@ -205,15 +217,16 @@ public:
   }
   
   // stream power up!
-  void read_stream(bool cmd = false) {
+  void read_stream(std::string prom = "Test> ", bool cmd = true) {
     while (1) {
       if (cur_tok.type == tok_invalid) {
-        if (cmd) std::cerr << "7mile> ";
+        if (cmd) std::cerr << prom;
         adv();
       }
       switch (cur_tok.type)
       {
-      case tok_eof: return;
+      case tok_eof: return void(std::cerr << std::endl);
+      case tok_invalid: continue;
       case tok_kw_def:
       {
         auto def = parse_def();
