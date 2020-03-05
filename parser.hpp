@@ -234,6 +234,8 @@ public:
         std::cerr << "Function Definition: ";
         def->output();
         std::cerr << std::endl;
+
+        def->codegen()->print(llvm::errs());
       }
       break;
       case tok_kw_extern:
@@ -243,6 +245,8 @@ public:
         std::cerr << "Extern Function Prototype: ";
         ext->output();
         std::cerr << std::endl;
+
+        ext->codegen()->print(llvm::errs());
       }
       break;
       case tok_other:
@@ -254,6 +258,8 @@ public:
         std::cerr << "Toplevel Function: ";
         top->output();
         std::cerr << std::endl;
+
+        top->codegen()->print(llvm::errs());
       }
       break;
       }
