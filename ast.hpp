@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <llvm-9/llvm/IR/Constant.h>
 #include <map>
 #include <memory>
 #include <vector>
@@ -77,7 +78,7 @@ class NumExprNode : public ExprNode {
 
 public:
   NumExprNode(double val) : val(val) {  }
-  virtual void output(std::ostream & os = std::cerr) {
+  virtual void output(std::ostream & os = std::cerr) override {
     os << "{ NumExpr, \"val\": " << val << " }";
   }
   virtual llvm::Value* codegen() override {
@@ -90,7 +91,7 @@ class CharExprNode : public ExprNode {
 
 public:
   CharExprNode(char val) : val(val) {  }
-  virtual void output(std::ostream & os = std::cerr) {
+  virtual void output(std::ostream & os = std::cerr) override {
     os << "{ CharExpr, \"val\": '" << val << "' }";
   }
   virtual llvm::Value* codegen() override {
@@ -103,18 +104,19 @@ class StringExprNode : public ExprNode {
 
 public:
   StringExprNode(const std::string& val) : val(val) {  }
-  virtual void output(std::ostream & os = std::cerr) {
+  virtual void output(std::ostream & os = std::cerr) override {
     os << "{ StringExpr, \"val\": \"" << val << "\" }";
   }
   virtual llvm::Value* codegen() override {
-    std::vector<llvm::Constant*> vConInt;
-    
-    for (auto ch : val)
-      vConInt.push_back(llvm::ConstantInt::get(g_context, llvm::APInt(8, ch)));
+    return llvm::ConstantDataArray::getString(g_context, val);
 
-    return llvm::ConstantArray::get(
-      llvm::ArrayType::get(llvm::Type::getInt16Ty(g_context), val.size()),
-      llvm::ArrayRef(vConInt));
+    // std::vector<llvm::Constant*> vConInt;
+    // for (auto ch : val)
+    //   vConInt.push_back(llvm::ConstantInt::get(g_context, llvm::APInt(8, ch)));
+
+    // return llvm::ConstantArray::get(
+    //   llvm::ArrayType::get(llvm::Type::getInt16Ty(g_context), val.size()),
+    //   llvm::ArrayRef(vConInt));
   }
 };
 
@@ -123,7 +125,7 @@ class VarExprNode : public ExprNode {
 
 public:
   VarExprNode(const std::string &id) : id(id) {  }
-  virtual void output(std::ostream & os = std::cerr) {
+  virtual void output(std::ostream & os = std::cerr) override {
     os << "{ VarExpr, \"id\": \"" << id << "\" }";
   }
 
@@ -143,7 +145,7 @@ public:
     expr_t right) : op(op),
     left(std::move(left)), right(std::move(right)) {  }
 
-  virtual void output(std::ostream & os = std::cerr) {
+  virtual void output(std::ostream & os = std::cerr) override {
     os << "{ BinExpr, \"operator\": '" << op << "', \"left\": ";
     left->output();
     os << ", \"right\": ";
@@ -154,6 +156,8 @@ public:
   virtual llvm::Value* codegen() override {
     auto L = left->codegen(), R = right->codegen();
     if (!L || !R) return nullptr;
+
+    
     
     switch (op)
     {
@@ -182,7 +186,7 @@ class CallExprNode : public ExprNode {
 public:
   CallExprNode(const std::string &func, std::vector<expr_t> args)
     : func(func), args(std::move(args)) {  }
-  virtual void output(std::ostream & os = std::cerr) {
+  virtual void output(std::ostream & os = std::cerr) override {
     os << "{ CallExpr, \"func_name\": \"" << func << "\", \"args\": ";
     output_list<expr_t>(args, [](auto &x, auto &os){ x->output(os); });
     os << " }";
@@ -214,7 +218,7 @@ public:
     : id(id), args(std::move(args)) {  }
   
   // { Prototype, "id": "cos", "args": ["theta"] }
-  virtual void output(std::ostream & os = std::cerr) {
+  virtual void output(std::ostream & os = std::cerr) override {
     os << "{ Prototype, \"id\": \"" << id << "\"";
     if (args.size()) {
       os << ", \"args\": ";
@@ -225,7 +229,7 @@ public:
 
   std::string get_name() { return id; }
 
-  virtual llvm::Function* codegen() {
+  virtual llvm::Function* codegen() override {
     std::vector<llvm::Type*> vArgsTy;
     for (const auto& x:args)
       vArgsTy.push_back(llvm::Type::getDoubleTy(g_context));
@@ -252,7 +256,7 @@ public:
       body(std::move(body)) {  }
 
   // { Function, { Prototype, $...$ }, { Body, "..." } }
-  virtual void output(std::ostream & os = std::cerr) {
+  virtual void output(std::ostream & os = std::cerr) override {
     os << "{ Function, \"prototype\": ";
     proto->output(os);
     os << ", \"body\": ";
@@ -260,7 +264,7 @@ public:
     os << " }";
   }
 
-  virtual llvm::Function* codegen() {
+  virtual llvm::Function* codegen() override {
     // second
     auto fun = g_module->getFunction(proto->get_name());
 

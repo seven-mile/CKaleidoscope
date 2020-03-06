@@ -1,5 +1,6 @@
 #include <bits/stdc++.h>
 
+#include "ast.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 
