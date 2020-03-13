@@ -1,6 +1,15 @@
 #pragma once
 
 #include "ast.hpp"
+#include "global.hpp"
+#include "jit.hpp"
+#include "lexer.hpp"
+#include "optimizer.hpp"
+#include <cassert>
+#include <cstdint>
+#include <llvm/Support/Error.h>
+#include <llvm/Support/raw_ostream.h>
+#include <memory>
 
 namespace zMile {
 
@@ -197,6 +206,23 @@ public:
     return std::make_unique<FuncNode>(std::move(proto), std::move(body));
   }
 
+  expr_t parse_if() {
+    if (cur_tok.type != tok_kw_if)
+      return log_err("unexpected token, expected the keyword if.");
+    
+    adv(); // cond
+
+    expr_t cond, then, els;
+    cond = parse_expr();
+    if (!cond) return nullptr;
+    then = parse_expr();
+    if (!then) return nullptr;
+    els  = parse_expr();
+    if (!els ) return nullptr;
+
+    return std::make_unique<IfExprNode>(std::move(cond), std::move(then), std::move(els));
+  }
+
   // global scope (naked) codes, considered as a function
   func_t parse_toplevel() {
     expr_t body = parse_expr();
@@ -231,22 +257,23 @@ public:
       {
         auto def = parse_def();
         if (!def) { adv(); break; }
-        std::cerr << "Function Definition: ";
-        def->output();
-        std::cerr << std::endl;
-
-        def->codegen()->print(llvm::errs());
+        
+        if (auto tcode = def->codegen()) {
+          tcode->print(llvm::errs());
+          g_jit->addModule(std::move(g_module));
+          init_module_and_pass_mgr();
+        }
       }
       break;
       case tok_kw_extern:
       {
         auto ext = parse_extern();
         if (!ext) { adv(); break; }
-        std::cerr << "Extern Function Prototype: ";
-        ext->output();
-        std::cerr << std::endl;
 
-        ext->codegen()->print(llvm::errs());
+        if (auto tcode = ext->codegen()) {
+          tcode->print(llvm::errs());
+          g_protos[ext->get_name()] = std::move(ext);
+        }
       }
       break;
       case tok_other:
@@ -254,12 +281,24 @@ public:
       default:
       {
         auto top = parse_toplevel();
-        if (!top) { adv(); break; }
+        if (!top) return adv();
         std::cerr << "Toplevel Function: ";
         top->output();
         std::cerr << std::endl;
 
-        top->codegen()->print(llvm::errs());
+        if (auto tcode = top->codegen()) {
+          tcode->print(llvm::errs());
+          auto hmodule = g_jit->addModule(std::move(g_module));
+          init_module_and_pass_mgr();
+
+          auto expr_sym = g_jit->findSymbol("__top_level__");
+          if (!expr_sym) log_err("jit error: function not found.");
+
+          auto res = ((double (*)())(intptr_t)cantFail(expr_sym.getAddress()))();
+          std::cerr << "Evaluated to " << res << std::endl;
+
+          g_jit->removeModule(hmodule);
+        }
       }
       break;
       }

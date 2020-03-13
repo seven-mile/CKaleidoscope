@@ -3,6 +3,8 @@
 #include <iostream>
 #include <any>
 
+#include "errdef.hpp"
+
 #define EXT_STR_ANY(x) std::any_cast<const std::string&>(x)
 
 namespace zMile {

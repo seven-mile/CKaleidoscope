@@ -1,19 +1,22 @@
 #include <bits/stdc++.h>
-
+#include "global.hpp"
 #include "ast.hpp"
 #include "lexer.hpp"
+#include "jit.hpp"
 #include "parser.hpp"
+#include "optimizer.hpp"
 
 int main()
 {
   zMile::Lexer lex(std::cin, true);
   zMile::Parser par(lex);
 
-  zMile::g_module = std::make_unique<llvm::Module>("kaleido", zMile::g_context);
+  zMile::init_jit_env();
+
+  // first module
+  zMile::init_module_and_pass_mgr();
 
   par.read_stream();
-
-  zMile::g_module->print(llvm::errs(), nullptr);
 
   return 0;
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cassert>
 #include <functional>
 #include <any>
 
@@ -17,6 +18,9 @@ enum tag_tok : char {
     // keywords
     tok_kw_def,
     tok_kw_extern,
+    tok_kw_if,
+    tok_kw_then,
+    tok_kw_else,
 
     // identifier
     tok_id,
@@ -108,6 +112,12 @@ public:
         return tok_kw_def;
       } else if (tmp_str == "extern") {
         return tok_kw_extern;
+      } else if (tmp_str == "if") {
+        return tok_kw_if;
+      } else if (tmp_str == "then") {
+        return tok_kw_then;
+      } else if (tmp_str == "else") {
+        return tok_kw_else;
       }
 
       return { tok_id, tmp_str };

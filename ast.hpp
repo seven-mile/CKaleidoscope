@@ -1,25 +1,29 @@
 #pragma once
 
 #include <iostream>
-#include <llvm-9/llvm/IR/Constant.h>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <vector>
 #include <functional>
 
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/Verifier.h"
+#include <llvm/IR/Constant.h>
+#include <llvm/IR/PassManager.h>
+#include <llvm/ADT/APFloat.h>
+#include <llvm/ADT/STLExtras.h>
+#include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Type.h>
+#include <llvm/IR/Verifier.h>
 
+#include "global.hpp"
 #include "lexer.hpp"
+#include "optimizer.hpp"
 
 namespace zMile {
 
@@ -41,14 +45,11 @@ inline void output_list(const std::vector<T>& v,
   os << " ]";
 }
 
+inline llvm::Function* get_func(std::string name);
+
 // =========================
 // Global Variants
 // =========================
-
-static llvm::LLVMContext g_context;
-static llvm::IRBuilder<> g_builder(g_context);
-static std::unique_ptr<llvm::Module> g_module;
-static std::map<std::string, llvm::Value*> named_values;
 
 class Outputable {
 public:
@@ -130,7 +131,7 @@ public:
   }
 
   virtual llvm::Value* codegen() override {
-    auto ret = named_values[id];
+    auto ret = g_named_values[id];
     if (!ret) return log_err("unknown variable name.");
     return ret;
   }
@@ -156,8 +157,6 @@ public:
   virtual llvm::Value* codegen() override {
     auto L = left->codegen(), R = right->codegen();
     if (!L || !R) return nullptr;
-
-    
     
     switch (op)
     {
@@ -193,7 +192,7 @@ public:
   }
 
   virtual llvm::Value* codegen() override {
-    llvm::Function *l_fun = g_module->getFunction(func);
+    llvm::Function *l_fun = get_func(func);
     if (!l_fun) return log_err("unknown function reference.");
     
     if (args.size() != l_fun->arg_size()) return log_err("incorrect # arguments passed.");
@@ -205,6 +204,51 @@ public:
     }
 
     return g_builder.CreateCall(l_fun, lv_args, "call");
+  }
+};
+
+class IfExprNode : public ExprNode {
+  expr_t cond, then, els;
+
+public:
+  IfExprNode(expr_t cond, expr_t then, expr_t els)
+    : cond(std::move(cond)), then(std::move(then)), els(std::move(els)) {}
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ IfExpr, \"cond\": ";
+    cond->output();
+    os << ", \"then\": ";
+    then->output();
+    os << ", \"else\": ";
+    els->output();
+    os << " }";
+  }
+
+  virtual llvm::Value* codegen() override {
+    auto vl_cond = cond->codegen();
+    vl_cond = g_builder.CreateFCmpONE(
+      vl_cond,
+      llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
+      "ifcond");
+    
+    // func is the current block's parent, not absolutely really a function.
+    auto func = g_builder.GetInsertBlock()->getParent();
+    
+    // bl_then is binded with func
+    auto bl_then = llvm::BasicBlock::Create(g_context, "then", func),
+         bl_else = llvm::BasicBlock::Create(g_context, "else"),
+         bl_merg = llvm::BasicBlock::Create(g_context, "if");
+    
+    g_builder.CreateCondBr(vl_cond, bl_then, bl_else);
+    // set the newly created block before bl_then
+    g_builder.SetInsertPoint(bl_then);
+    
+    auto vl_then = then->codegen();
+    if (!vl_then) return nullptr;
+
+    g_builder.CreateBr(bl_merg);
+    bl_then = g_builder.GetInsertBlock();
+
+    return nullptr;
   }
 };
 
@@ -265,11 +309,14 @@ public:
   }
 
   virtual llvm::Function* codegen() override {
+    // ownership transfered, we need a reference
+    auto &rpr = *proto;
+    g_protos[proto->get_name()] = std::move(proto);
     // second
-    auto fun = g_module->getFunction(proto->get_name());
+    auto fun = get_func(rpr.get_name());
 
     // first
-    if (!fun) fun = proto->codegen();
+    if (!fun) return nullptr;
 
     // error handling
     if (!fun) return nullptr;
@@ -280,13 +327,16 @@ public:
     auto bas_blo = llvm::BasicBlock::Create(g_context, "entry", fun);
     g_builder.SetInsertPoint(bas_blo);
 
-    named_values.clear();
+    g_named_values.clear();
     for (auto& arg: fun->args())
-      named_values[arg.getName()] = &arg;
+      g_named_values[arg.getName()] = &arg;
 
     if (auto ret_val = body->codegen()) {
       g_builder.CreateRet(ret_val);
       llvm::verifyFunction(*fun);
+
+      // optimize it
+      g_fpm->run(*fun);
 
       return fun;
     }
@@ -297,5 +347,16 @@ public:
 };
 
 using func_t = std::unique_ptr<FuncNode>;
+
+inline llvm::Function* get_func(std::string name) {
+  if (auto *res = g_module->getFunction(name))
+    return res;
+  
+  auto res = g_protos.find(name);
+  if (res != g_protos.end())
+    return res->second->codegen();
+  
+  return nullptr;
+}
 
 }
