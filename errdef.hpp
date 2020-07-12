@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdexcept>
 #include <system_error>
 
 #define DECLARE_GENERAL_ERROR(err_name, err_base) \
@@ -18,5 +19,6 @@ namespace zMile {
 
 DECLARE_LOGIC_ERROR(syntax_error)
 DECLARE_LOGIC_ERROR(object_invalid)
+DECLARE_GENERAL_ERROR(io_error, std::runtime_error)
 
 }

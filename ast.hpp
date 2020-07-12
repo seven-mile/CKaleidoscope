@@ -7,6 +7,7 @@
 #include <vector>
 #include <functional>
 
+#include <llvm/IR/Instructions.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/ADT/APFloat.h>
@@ -109,15 +110,7 @@ public:
     os << "{ StringExpr, \"val\": \"" << val << "\" }";
   }
   virtual llvm::Value* codegen() override {
-    return llvm::ConstantDataArray::getString(g_context, val);
-
-    // std::vector<llvm::Constant*> vConInt;
-    // for (auto ch : val)
-    //   vConInt.push_back(llvm::ConstantInt::get(g_context, llvm::APInt(8, ch)));
-
-    // return llvm::ConstantArray::get(
-    //   llvm::ArrayType::get(llvm::Type::getInt16Ty(g_context), val.size()),
-    //   llvm::ArrayRef(vConInt));
+    return g_builder.CreateGlobalStringPtr(val);
   }
 };
 
@@ -168,9 +161,12 @@ public:
       return g_builder.CreateFMul(L, R, "mul");
     case '/':
       return g_builder.CreateFDiv(L, R, "div");
+    case '%':
+      return g_builder.CreateFRem(L, R, "mod");
     case '<':
-      L = g_builder.CreateFCmpULT(L, R, "cmp");
-      return g_builder.CreateUIToFP(L, llvm::Type::getDoubleTy(g_context), "bool");
+      return g_builder.CreateFCmpULT(L, R, "lt");
+    case '>':
+      return g_builder.CreateFCmpUGT(L, R, "gt");
     default:
       return log_err("invalid binary operator.");
       break;
@@ -212,7 +208,7 @@ class IfExprNode : public ExprNode {
 
 public:
   IfExprNode(expr_t cond, expr_t then, expr_t els)
-    : cond(std::move(cond)), then(std::move(then)), els(std::move(els)) {}
+    : cond(std::move(cond)), then(std::move(then)), els(std::move(els)) {  }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ IfExpr, \"cond\": ";
     cond->output();
@@ -225,6 +221,7 @@ public:
 
   virtual llvm::Value* codegen() override {
     auto vl_cond = cond->codegen();
+    if (vl_cond->getType()->getTypeID() == llvm::Type::getInt1Ty(g_context)->getTypeID())
     vl_cond = g_builder.CreateFCmpONE(
       vl_cond,
       llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
@@ -233,58 +230,181 @@ public:
     // func is the current block's parent, not absolutely really a function.
     auto func = g_builder.GetInsertBlock()->getParent();
     
-    // bl_then is binded with func
+    // bl_then is binded with func, so you needn't use func.gBBL().pb() for it
     auto bl_then = llvm::BasicBlock::Create(g_context, "then", func),
          bl_else = llvm::BasicBlock::Create(g_context, "else"),
-         bl_merg = llvm::BasicBlock::Create(g_context, "if");
+         bl_merg = llvm::BasicBlock::Create(g_context, "afterif");
     
     g_builder.CreateCondBr(vl_cond, bl_then, bl_else);
-    // set the newly created block before bl_then
+    // pour the newly created instructions into bl_then
     g_builder.SetInsertPoint(bl_then);
     
+    // create instructions
     auto vl_then = then->codegen();
     if (!vl_then) return nullptr;
 
+    // skip else, br to merg
     g_builder.CreateBr(bl_merg);
     bl_then = g_builder.GetInsertBlock();
 
-    return nullptr;
+    // insert the else block
+    func->getBasicBlockList().push_back(bl_else);
+    g_builder.SetInsertPoint(bl_else);
+
+    llvm::Value* vl_else = els->codegen();
+    if (!vl_else) return nullptr;
+
+    // Also
+    g_builder.CreateBr(bl_merg);
+    bl_else = g_builder.GetInsertBlock();
+
+    func->getBasicBlockList().push_back(bl_merg);
+    g_builder.SetInsertPoint(bl_merg);
+
+    llvm::PHINode* phi = g_builder.CreatePHI(llvm::Type::getDoubleTy(g_context), 2, "iftmp");
+
+    // Judging by which block you come from, return value
+    phi->addIncoming(vl_then, bl_then);
+    phi->addIncoming(vl_else, bl_else);
+
+    return phi;
+  }
+};
+
+class ForExprNode : public ExprNode {
+  std::string var;
+  expr_t start, end, incr, body;
+public:
+  ForExprNode(std::string var, expr_t start, expr_t end, expr_t incr, expr_t body) :
+    var(var), start(std::move(start)), end(std::move(end)),
+    incr(std::move(incr)), body(std::move(body)) {  }
+  
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ ForExpr, \"var\": \"" << var << "\"";
+    os << ", \"start\": ";
+    start->output();
+    os << ", \"end\": ";
+    end->output();
+    os << ", \"incr\": ";
+    incr->output();
+    os << ", \"body\": ";
+    body->output();
+    os << " }";
+  }
+
+  virtual llvm::Value* codegen() override {
+    // g_builder.CreateIntToPtr()
+    auto vl_start = start->codegen();
+    if (!vl_start) return nullptr;
+    
+    auto func = g_builder.GetInsertBlock()->getParent();
+
+    // bl_now is just for PHINode's judgement
+    auto bl_now   = g_builder.GetInsertBlock(),
+         bl_loop  = llvm::BasicBlock::Create(g_context, "loop", func);
+
+    g_builder.CreateBr(bl_loop);
+    g_builder.SetInsertPoint(bl_loop);
+
+    llvm::PHINode* phi = g_builder.CreatePHI(llvm::Type::getDoubleTy(g_context), 2, var);
+    phi->addIncoming(vl_start, bl_now);
+
+    auto vl_old = g_named_values[var];
+    g_named_values[var] = phi;
+
+    auto vl_body = body->codegen();
+    if (!vl_body) return nullptr;
+
+    llvm::Value* vl_incr;
+    if (incr) {
+      vl_incr = incr->codegen();
+      if (!vl_incr) return nullptr;
+    } // default
+    else vl_incr = llvm::ConstantFP::get(g_context, llvm::APFloat(1.));
+
+    phi->print(llvm::dbgs());
+    llvm::dbgs() << "\n";
+    vl_incr->print(llvm::dbgs());
+    llvm::dbgs() << "\n";
+
+    auto vl_incred = g_builder.CreateFAdd(phi, vl_incr, "incr");
+
+    auto vl_end = end->codegen();
+    if (!vl_end) return nullptr;
+
+    if (!vl_end->getType()->isIntegerTy(1))
+      vl_end = g_builder.CreateFCmpONE(
+        vl_end, llvm::ConstantFP::get(g_context, llvm::APFloat(0.)), "loopcmp");
+    
+    auto bl_loopend = g_builder.GetInsertBlock(),
+         bl_after = llvm::BasicBlock::Create(g_context, "after", func);
+    
+    g_builder.CreateCondBr(vl_end, bl_loop, bl_after);
+
+    g_builder.SetInsertPoint(bl_after);
+    phi->addIncoming(vl_incred, bl_loopend);
+
+    if (vl_old) g_named_values[var] = vl_old;
+    else g_named_values.erase(var);
+
+    return llvm::Constant::getNullValue(llvm::Type::getDoubleTy(g_context));
   }
 };
 
 // classes for functions
 
+typedef struct Var {
+  std::string name;
+  tag_tok type;
+
+  Var(const std::string& name, zMile::tag_tok type) : name(name), type(type)
+  {
+    if (!tok_is_type(type))
+      assert(log_err<std::logic_error>("type error: invalid type assigned to the variable."));
+  }
+
+  std::string to_string(bool hasType = false) const {
+    if (hasType) return map_tok[type] + " " + name;
+    else return name;
+  }
+} Argu;
+
 class ProtoNode : public Outputable, FuncGenable {
   std::string id;
-  std::vector<std::string> args;
+  tag_tok type;
+  std::vector<Argu> args;
 public:
-  ProtoNode(std::string id, std::vector<std::string> args)
-    : id(id), args(std::move(args)) {  }
+  ProtoNode(std::string id, tag_tok type, std::vector<Argu> args)
+    : id(id), type(type), args(std::move(args)) {  }
   
-  // { Prototype, "id": "cos", "args": ["theta"] }
+  // { Prototype, "id": "cos", "type": "number", "args": ["number theta"] }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ Prototype, \"id\": \"" << id << "\"";
+    os << "{ Prototype, \"id\": \"" << id << "\""
+       << ", \"type\": \"" << map_tok[type] << "\"";
     if (args.size()) {
       os << ", \"args\": ";
-      output_list<std::string>(args, [](auto &x, auto &os){ os << '"' << x << '"'; });
+      output_list<Argu>(args, [](auto &x, auto &os){ os << '"' << x.to_string(true) << '"'; });
     }
     os << " }";
   }
 
   std::string get_name() { return id; }
+  // return type
+  tag_tok get_type() { return type; }
+  void set_type(tag_tok t) { type = t; }
 
   virtual llvm::Function* codegen() override {
     std::vector<llvm::Type*> vArgsTy;
     for (const auto& x:args)
-      vArgsTy.push_back(llvm::Type::getDoubleTy(g_context));
+      vArgsTy.push_back(get_type_of_tok(x.type));
     
-    auto l_fun_ty = llvm::FunctionType::get(llvm::Type::getDoubleTy(g_context), vArgsTy, false);
+    auto l_fun_ty = llvm::FunctionType::get(get_type_of_tok(type), vArgsTy, false);
     auto l_fun = llvm::Function::Create(l_fun_ty, llvm::Function::ExternalLinkage, id, g_module.get());
     
     unsigned idx = 0;
     for (auto& arg: l_fun->args())
-      arg.setName(args[idx]);
-
+      arg.setName(args[idx++].to_string());
+    
     return l_fun;
   }
 };
@@ -293,7 +413,7 @@ using proto_t = std::unique_ptr<ProtoNode>;
 
 class FuncNode : public Outputable, FuncGenable {
   proto_t proto;
-  expr_t body; // what it will be calced.
+  expr_t body; // what it will be calculated.
 public:
   FuncNode(proto_t proto,
     expr_t body) : proto(std::move(proto)),
@@ -309,6 +429,10 @@ public:
   }
 
   virtual llvm::Function* codegen() override {
+    // special for top level func, set the type
+    // if (proto->get_name() == "__top_level__")
+    //   proto->set_type(find_value_type(vl_body->getType()));
+    
     // ownership transfered, we need a reference
     auto &rpr = *proto;
     g_protos[proto->get_name()] = std::move(proto);
@@ -331,11 +455,14 @@ public:
     for (auto& arg: fun->args())
       g_named_values[arg.getName()] = &arg;
 
-    if (auto ret_val = body->codegen()) {
-      g_builder.CreateRet(ret_val);
+    auto vl_body = body->codegen();
+    if (vl_body) {
+      g_builder.CreateRet(vl_body);
       llvm::verifyFunction(*fun);
 
       // optimize it
+      g_fpm->run(*fun);
+
       g_fpm->run(*fun);
 
       return fun;

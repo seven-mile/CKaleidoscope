@@ -17,10 +17,20 @@ enum tag_tok : char {
     
     // keywords
     tok_kw_def,
+    
     tok_kw_extern,
+
+    tok_kw_number,
+    tok_kw_string,
+    tok_kw_char,
+    tok_kw_bool,
+
     tok_kw_if,
     tok_kw_then,
     tok_kw_else,
+
+    tok_kw_for,
+    tok_kw_in,
 
     // identifier
     tok_id,
@@ -34,9 +44,41 @@ enum tag_tok : char {
 };
 
 const std::string map_tok[] = {
-  "EOF", "Keyword", "Keyword", "Identity", "Literal Number",
+  "EOF", "Define", "Extern", "Number", "String", "Char", "Bool", "If",
+  "Then", "Else", "For", "In", "Identity", "Literal Number",
   "Literal Char", "Literal String", "Other Lang Tool"
 };
+
+inline const bool tok_is_type(const tag_tok t) {
+  return t == tok_kw_number ||
+         t == tok_kw_string ||
+         t == tok_kw_char;
+}
+
+inline llvm::Type* get_type_of_tok(const tag_tok t) {
+  switch (t) {
+    case tok_kw_number:
+      return llvm::Type::getDoubleTy(g_context);
+    case tok_kw_string:
+      return llvm::Type::getInt8PtrTy(g_context);
+    case tok_kw_char:
+      return llvm::Type::getInt8Ty(g_context);
+    case tok_kw_bool:
+      return llvm::Type::getInt1Ty(g_context);
+    default:
+      return nullptr;
+  }
+}
+
+inline tag_tok find_value_type(llvm::Type* t) {
+  if (t->isFloatingPointTy()) return tok_kw_number;
+  if (t->isArrayTy() && 
+    (t->getArrayElementType()->isIntegerTy(8)))
+      return tok_kw_string;
+  if (t->isIntegerTy(8)) return tok_kw_char;
+  if (t->isIntegerTy(1)) return tok_kw_bool;
+  return tok_invalid;
+}
 
 struct Token {
   tag_tok type;
@@ -55,7 +97,11 @@ struct Token {
     // { return type == rhs.type && val == rhs.val; }
   ~Token() {  }
 
-  void print() {
+  bool is_type() const {
+    return tok_is_type(type);
+  }
+
+  void print() const {
     std::cerr << "{ " << map_tok[type] << ", ";
     print_any(val);
     std::cerr << " }" << std::endl;
@@ -108,19 +154,37 @@ public:
 
       upd();
 
-      if (tmp_str == "def") {
-        return tok_kw_def;
-      } else if (tmp_str == "extern") {
-        return tok_kw_extern;
-      } else if (tmp_str == "if") {
-        return tok_kw_if;
-      } else if (tmp_str == "then") {
-        return tok_kw_then;
-      } else if (tmp_str == "else") {
-        return tok_kw_else;
-      }
+      tag_tok curx = tok_invalid;
 
-      return { tok_id, tmp_str };
+      if (tmp_str == "def") {
+        curx = tok_kw_def;
+      } else if (tmp_str == "extern") {
+        curx = tok_kw_extern;
+      }
+        else if (tmp_str == "number") {
+        curx = tok_kw_number;
+      } else if (tmp_str == "string") {
+        curx = tok_kw_string;
+      } else if (tmp_str == "char") {
+        curx = tok_kw_char;
+      } else if (tmp_str == "bool") {
+        curx = tok_kw_bool;
+      }
+        else if (tmp_str == "if") {
+        curx = tok_kw_if;
+      } else if (tmp_str == "then") {
+        curx = tok_kw_then;
+      } else if (tmp_str == "else") {
+        curx = tok_kw_else;
+      }
+        else if (tmp_str == "for") {
+        curx = tok_kw_for;
+      } else if (tmp_str == "in") {
+        curx = tok_kw_in;
+      } 
+        else curx = tok_id;
+
+      return { curx, tmp_str };
     }
 
     if (isdigit(~file) || ~file == '.') {

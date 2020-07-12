@@ -1,12 +1,15 @@
 #pragma once
 
+#include "anyex.hpp"
 #include "ast.hpp"
 #include "global.hpp"
 #include "jit.hpp"
 #include "lexer.hpp"
 #include "optimizer.hpp"
+#include <any>
 #include <cassert>
 #include <cstdint>
+#include <llvm/ADT/STLExtras.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
@@ -16,6 +19,7 @@ namespace zMile {
 // non-const
 std::map<char, int> map_op_prior
 {
+  {'<', 5}, {'>', 5},
   {'+', 10}, {'-', 10},
   {'*', 20}, {'/', 20}, {'%', 20},
 };
@@ -76,6 +80,7 @@ public:
     if (!any_eq_char(cur_tok.val, '('))
       return std::make_unique<VarExprNode>(id);
     
+    // go on to parse call expr
     adv();
     std::vector<expr_t> args;
     if (!any_eq_char(cur_tok.val, ')'))
@@ -105,6 +110,10 @@ public:
       return parse_char();
     if (cur_tok.type == tok_lit_string)
       return parse_str();
+    if (cur_tok.type == tok_kw_if)
+      return parse_if();
+    if (cur_tok.type == tok_kw_for)
+      return parse_for();
     if (any_eq_char(cur_tok.val, '('))
       return parse_paren();
     if (!hasSign && cur_tok.type == tok_other) {
@@ -152,6 +161,11 @@ public:
   // all functions return a number(double), so the pattern is
   // func_name(func_arg1, func_arg2, ...)
   proto_t parse_proto() {
+    if (!cur_tok.is_type())
+      return log_err("unexpected token, expected a type name.");
+    auto rtn_ty = cur_tok.type;
+
+    adv();
     if (cur_tok.type != tok_id)
       return log_err("unexpected token, expected an identifier.");
     std::string id = EXT_STR_ANY(cur_tok.val);
@@ -161,13 +175,17 @@ public:
       return log_err("unexpected token, expected '('.");
     
     adv();
-    std::vector<std::string> args;
+    std::vector<Argu> args;
 
     if (!any_eq_char(cur_tok.val, ')'))
       while(1) {
+        if (!cur_tok.is_type())
+          return log_err("unexpected token, expected a type name.");
+        auto arg_ty = cur_tok.type;
+        adv();
         if (cur_tok.type != tok_id)
           return log_err("unexpected token, expected an arg name.");
-        args.push_back(EXT_STR_ANY(cur_tok.val));
+        args.emplace_back(EXT_STR_ANY(cur_tok.val), arg_ty);
         adv();
         if (any_eq_char(cur_tok.val, ')')) break;
         if (!any_eq_char(cur_tok.val, ','))
@@ -175,7 +193,7 @@ public:
         adv();
       }
     adv();
-    return std::make_unique<ProtoNode>(id, args);
+    return std::make_unique<ProtoNode>(id, rtn_ty, args);
   }
 
   // extern func_prototype
@@ -209,18 +227,65 @@ public:
   expr_t parse_if() {
     if (cur_tok.type != tok_kw_if)
       return log_err("unexpected token, expected the keyword if.");
-    
-    adv(); // cond
 
+    adv(); // cond
     expr_t cond, then, els;
     cond = parse_expr();
     if (!cond) return nullptr;
+    if (cur_tok.type != tok_kw_then)
+      return log_err("unexpected token, expected the keyword then.");
+    
+    adv(); // then
     then = parse_expr();
     if (!then) return nullptr;
+    if (cur_tok.type != tok_kw_else)
+      return log_err("unexpected token, expected the keyword else.");
+
+    adv(); // else
     els  = parse_expr();
     if (!els ) return nullptr;
 
     return std::make_unique<IfExprNode>(std::move(cond), std::move(then), std::move(els));
+  }
+
+  expr_t parse_for() {
+    if (cur_tok.type != tok_kw_for)
+      return log_err("unexpected token, expected the keyword for.");
+    
+    adv(); // var
+    if (cur_tok.type != tok_id)
+      return log_err("unexpected token, expected an identity.");
+    
+    std::string var = std::any_cast<std::string>(cur_tok.val);
+
+    adv(); // start
+    if (cur_tok.type != tok_other || !any_eq_char(cur_tok.val, '='))
+      return log_err("unexpected token, expected \'=\'.");
+    adv();
+    auto start = parse_expr();
+    if (!start) return nullptr;
+    if (cur_tok.type != tok_other || !any_eq_char(cur_tok.val, ';'))
+      return log_err("unexpected token, expected \';\'");
+
+    adv(); // end
+    auto end = parse_expr();
+    if (!end) return nullptr;
+
+    expr_t incr;
+    if (cur_tok.type == tok_other && any_eq_char(cur_tok.val, ';')) {
+      incr = (adv(), parse_expr());
+      if (!incr) return nullptr;
+    }
+
+    if (cur_tok.type != tok_kw_in)
+      return log_err("unexpected token, expected the keyword in.");
+    
+    adv();
+    auto body = parse_expr();
+    if (!body) return nullptr;
+
+    return std::make_unique<ForExprNode>(var, std::move(start),
+           std::move(end), std::move(incr), std::move(body));
   }
 
   // global scope (naked) codes, considered as a function
@@ -229,7 +294,7 @@ public:
     if (!body) return nullptr;
     
     // autoly assign a prototype
-    proto_t proto = std::make_unique<ProtoNode>("__top_level__", std::vector<std::string>());
+    proto_t proto = std::make_unique<ProtoNode>("__top_level__", tok_kw_number, std::vector<Argu>());
     return std::make_unique<FuncNode>(std::move(proto), std::move(body));
   }
 
@@ -257,6 +322,8 @@ public:
       {
         auto def = parse_def();
         if (!def) { adv(); break; }
+
+        def->output();
         
         if (auto tcode = def->codegen()) {
           tcode->print(llvm::errs());
@@ -273,6 +340,16 @@ public:
         if (auto tcode = ext->codegen()) {
           tcode->print(llvm::errs());
           g_protos[ext->get_name()] = std::move(ext);
+        }
+      }
+      break;
+      case tok_kw_if:
+      {
+        auto ife = parse_if();
+        if (!ife) { adv(); break; }
+
+        if (auto tcode = ife->codegen()) {
+          tcode->print(llvm::errs());
         }
       }
       break;
@@ -294,8 +371,8 @@ public:
           auto expr_sym = g_jit->findSymbol("__top_level__");
           if (!expr_sym) log_err("jit error: function not found.");
 
-          auto res = ((double (*)())(intptr_t)cantFail(expr_sym.getAddress()))();
-          std::cerr << "Evaluated to " << res << std::endl;
+          auto res = ((double(*)())(intptr_t)cantFail(expr_sym.getAddress()))();
+          std::cerr << "\nEvaluated to " << res << std::endl;
 
           g_jit->removeModule(hmodule);
         }

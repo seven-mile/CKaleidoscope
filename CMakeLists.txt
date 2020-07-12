@@ -17,13 +17,16 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
+add_library(StdLib SHARED stdlib.cpp)
+set_target_properties(StdLib PROPERTIES VERSION 1.0 SOVERSION 1)
+
 add_executable(CKaleidoscope main.cpp)
 
 llvm_map_components_to_libnames(llvm_libs interpreter
   support core irreader orcjit executionengine native
   analysis instcombine object runtimedyld scalaropts)
 
-target_link_libraries(CKaleidoscope ${llvm_libs})
+target_link_libraries(CKaleidoscope StdLib ${llvm_libs})
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})
