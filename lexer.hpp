@@ -25,6 +25,9 @@ enum tag_tok : char {
     tok_kw_char,
     tok_kw_bool,
 
+    tok_kw_true,
+    tok_kw_false,
+
     tok_kw_if,
     tok_kw_then,
     tok_kw_else,
@@ -44,15 +47,16 @@ enum tag_tok : char {
 };
 
 const std::string map_tok[] = {
-  "EOF", "Define", "Extern", "Number", "String", "Char", "Bool", "If",
-  "Then", "Else", "For", "In", "Identity", "Literal Number",
+  "EOF", "Define", "Extern", "Number", "String", "Char", "Bool", "True", "False",
+  "If", "Then", "Else", "For", "In", "Identity", "Literal Number",
   "Literal Char", "Literal String", "Other Lang Tool"
 };
 
 inline const bool tok_is_type(const tag_tok t) {
   return t == tok_kw_number ||
          t == tok_kw_string ||
-         t == tok_kw_char;
+         t == tok_kw_char   ||
+         t == tok_kw_bool   ;
 }
 
 inline llvm::Type* get_type_of_tok(const tag_tok t) {
@@ -92,9 +96,6 @@ struct Token {
   Token(const Token& rhs) = default;
   Token(Token&& rhs) = default;
   Token& operator=(Token &&rhs) = default;
-    // { type = rhs.type, val = rhs.val; return *this; }
-  // bool operator==(Token &&rhs) const
-    // { return type == rhs.type && val == rhs.val; }
   ~Token() {  }
 
   bool is_type() const {
@@ -170,6 +171,11 @@ public:
       } else if (tmp_str == "bool") {
         curx = tok_kw_bool;
       }
+        else if (tmp_str == "true") {
+        curx = tok_kw_true;
+      } else if (tmp_str == "false") {
+        curx = tok_kw_false;
+      }
         else if (tmp_str == "if") {
         curx = tok_kw_if;
       } else if (tmp_str == "then") {
@@ -215,7 +221,22 @@ public:
     if (~file == '\"') {
       tmp_str.clear();
       while (!file != '\n' && ~file != '\r' && ~file != '\"')
-        tmp_str += ~file;
+      {
+        char tch = ~file;
+        if (tch == '\\')
+        {
+          tch = !file;
+          // todo: \[number] ascii char
+          switch (tch) {
+            case 'n': tch = '\n'; break;
+            case 'r': tch = '\r'; break;
+            case 't': tch = '\t'; break;
+            default: break;
+          }
+        }
+        tmp_str += tch;
+
+      }
       upd();
       if (~file == '\"') { !file; return { tok_lit_string, tmp_str }; }
       throw zMile::syntax_error("no ending \" character.");

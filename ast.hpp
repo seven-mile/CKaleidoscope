@@ -46,6 +46,18 @@ inline void output_list(const std::vector<T>& v,
   os << " ]";
 }
 
+// print "\n" as "\\n"
+inline std::string get_raw_string(std::string str) {
+  for (auto it = str.begin(); it < str.end(); it++)
+    switch (*it) {
+      case '\n': str.replace(it, it+1, "\\n"); break;
+      case '\r': str.replace(it, it+1, "\\r"); break;
+      case '\t': str.replace(it, it+1, "\\t"); break;
+      default: break;
+    }
+  return str;
+}
+
 inline llvm::Function* get_func(std::string name);
 
 // =========================
@@ -107,10 +119,24 @@ class StringExprNode : public ExprNode {
 public:
   StringExprNode(const std::string& val) : val(val) {  }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ StringExpr, \"val\": \"" << val << "\" }";
+    // we need to display raw string
+    os << "{ StringExpr, \"val\": \"" << get_raw_string(val) << "\" }";
   }
   virtual llvm::Value* codegen() override {
     return g_builder.CreateGlobalStringPtr(val);
+  }
+};
+
+class BoolExprNode : public ExprNode {
+  bool val;
+
+public:
+  BoolExprNode(bool val) : val(val) {  }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ BoolExpr, \"val\": " << (val ? "true" : "false") << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    return llvm::ConstantInt::get(g_context, llvm::APInt(1, val));
   }
 };
 
@@ -221,7 +247,7 @@ public:
 
   virtual llvm::Value* codegen() override {
     auto vl_cond = cond->codegen();
-    if (vl_cond->getType()->getTypeID() == llvm::Type::getInt1Ty(g_context)->getTypeID())
+    if (vl_cond->getType()->getTypeID() != llvm::Type::getInt1Ty(g_context)->getTypeID())
     vl_cond = g_builder.CreateFCmpONE(
       vl_cond,
       llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
@@ -277,7 +303,9 @@ class ForExprNode : public ExprNode {
 public:
   ForExprNode(std::string var, expr_t start, expr_t end, expr_t incr, expr_t body) :
     var(var), start(std::move(start)), end(std::move(end)),
-    incr(std::move(incr)), body(std::move(body)) {  }
+    incr(std::move(incr)), body(std::move(body)) {
+      if (!incr) this->incr = std::make_unique<NumExprNode>(1);
+    }
   
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ ForExpr, \"var\": \"" << var << "\"";
@@ -315,17 +343,8 @@ public:
     auto vl_body = body->codegen();
     if (!vl_body) return nullptr;
 
-    llvm::Value* vl_incr;
-    if (incr) {
-      vl_incr = incr->codegen();
-      if (!vl_incr) return nullptr;
-    } // default
-    else vl_incr = llvm::ConstantFP::get(g_context, llvm::APFloat(1.));
-
-    phi->print(llvm::dbgs());
-    llvm::dbgs() << "\n";
-    vl_incr->print(llvm::dbgs());
-    llvm::dbgs() << "\n";
+    auto vl_incr = incr->codegen();
+    if (!vl_incr) return nullptr;
 
     auto vl_incred = g_builder.CreateFAdd(phi, vl_incr, "incr");
 

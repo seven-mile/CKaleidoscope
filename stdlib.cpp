@@ -22,5 +22,5 @@ STD_API double print(char *str) {
 
 // extern number printd(number val);
 STD_API double printd(double val) {
-  return printf("%f\n", val);
+  return printf("%f", val);
 }

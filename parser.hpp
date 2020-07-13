@@ -110,6 +110,14 @@ public:
       return parse_char();
     if (cur_tok.type == tok_lit_string)
       return parse_str();
+    if (cur_tok.type == tok_kw_true) {
+      auto ptr = std::make_unique<BoolExprNode>(true);
+      return adv(), std::move(ptr);
+    }
+    if (cur_tok.type == tok_kw_false)  {
+      auto ptr = std::make_unique<BoolExprNode>(false);
+      return adv(), std::move(ptr);
+    }
     if (cur_tok.type == tok_kw_if)
       return parse_if();
     if (cur_tok.type == tok_kw_for)

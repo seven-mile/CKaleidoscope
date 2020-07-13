@@ -11,13 +11,13 @@
 
 int main(const int nargs, const char *cargs[])
 {
-  // std::ifstream ifs("/home/7mile/repos/Kaleidoscope/build/input.in");
+  std::ifstream ifs("/home/7mile/repos/Kaleidoscope/build/input.in");
 
-  // if (!ifs)
-    // zMile::log_err<zMile::io_error>("input file error!");
+  if (!ifs)
+    zMile::log_err<zMile::io_error>("input file error!");
 
-  zMile::Lexer lex(std::cin, true);
-  // zMile::Lexer lex(ifs, true);
+  // zMile::Lexer lex(std::cin, true);
+  zMile::Lexer lex(ifs, false);
   zMile::Parser par(lex);
 
   zMile::init_jit_env();
