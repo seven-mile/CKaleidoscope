@@ -4,6 +4,7 @@
 #include <functional>
 #include <any>
 
+#include "global.hpp"
 #include "ioagent.hpp"
 #include "errdef.hpp"
 #include "anyex.hpp"
@@ -112,18 +113,21 @@ struct Token {
 
 
 class Lexer {
-  FileSugar file;
+  FileSugar& file;
   std::string tmp_str;
   double num;
   bool submitted = false, cmd;
-
-public:
-  Lexer(FileSugar file, bool cmd = false) : file(file), cmd(cmd) {}
 
   inline bool isenter(char ch) { return ch == '\r' || ch == '\n'; }
   // Not EnTer But SPace
   inline bool netbsp(char ch) { return !isenter(ch) && isspace(ch); }
   inline bool escape(char ch) { return cmd ? netbsp(ch) : isspace(ch); }
+  
+public:
+  Lexer(FileSugar& file, bool cmd = false) : file(file), cmd(cmd) {  }
+
+  inline FileSugar& get_sugar() { return file; }
+
   void upd() {
     if (!cmd) return;
     while (escape(~file)) !file;

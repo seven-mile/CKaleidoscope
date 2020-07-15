@@ -4,6 +4,8 @@ project(CKaleidoscope VERSION 0.1.0)
 include(CTest)
 enable_testing()
 
+add_test(compl CKaleidoscope ../input.in)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

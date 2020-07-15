@@ -6,7 +6,7 @@
 
 namespace zMile {
 
-// ((C6H7O2)===(ONO2)3)n qwq
+// ((C6H7O2)===(ONO2)3)n
 class FileSugar
 {
   std::istream& file;

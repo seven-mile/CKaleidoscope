@@ -122,20 +122,19 @@ private:
 namespace zMile {
 
 std::unique_ptr<llvm::orc::KaleidoscopeJIT> g_jit;
-void* hStdLib;
 
 inline void init_jit_env() {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
-  
-  hStdLib = dlopen("StdLib.so", RTLD_NOW | RTLD_GLOBAL);
+
+  // for other operations
 
   g_jit = std::make_unique<llvm::orc::KaleidoscopeJIT>();
 }
 
 inline void fin_jit_env() {
-  dlclose(hStdLib);
+  // for other operations
 }
 
 }

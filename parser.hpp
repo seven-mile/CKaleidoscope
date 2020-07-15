@@ -39,7 +39,9 @@ class Parser {
   }
 
 public:
-  Parser(Lexer& lex) : lex(lex) {  }
+  Parser(Lexer& lex) : lex(lex) {
+    lex.get_sugar().get_stream().seekg(std::ios::beg);
+  }
 
   expr_t parse_num() {
     expr_t ptr = std::make_unique<NumExprNode>(
@@ -316,7 +318,7 @@ public:
   }
   
   // stream power up!
-  void read_stream(std::string prom = "Test> ", bool cmd = true) {
+  void read_stream(bool cmd = true, std::string prom = "Test> ") {
     while (1) {
       if (cur_tok.type == tok_invalid) {
         if (cmd) std::cerr << prom;
