@@ -19,7 +19,9 @@ namespace zMile {
 // non-const
 std::map<char, int> map_op_prior
 {
+  {'=', 2},
   {'<', 5}, {'>', 5},
+  {-'<', 5}, {-'>', 5},
   {'+', 10}, {'-', 10},
   {'*', 20}, {'/', 20}, {'%', 20},
 };
@@ -40,30 +42,30 @@ class Parser {
 
 public:
   Parser(Lexer& lex) : lex(lex) {
-    lex.get_sugar().get_stream().seekg(std::ios::beg);
+    // lex.get_sugar().get_stream().seekg(std::ios::beg);
   }
 
-  expr_t parse_num() {
-    expr_t ptr = std::make_unique<NumExprNode>(
+  node_t parse_num() {
+    node_t ptr = std::make_unique<NumExprNode>(
       std::any_cast<double>(cur_tok.val));
     return adv(), std::move(ptr);
   }
 
-  expr_t parse_char() {
-    expr_t ptr = std::make_unique<CharExprNode>(
+  node_t parse_char() {
+    node_t ptr = std::make_unique<CharExprNode>(
       std::any_cast<char>(cur_tok.val));
     return adv(), std::move(ptr);
   }
 
-  expr_t parse_str() {
-    expr_t ptr = std::make_unique<StringExprNode>(
+  node_t parse_str() {
+    node_t ptr = std::make_unique<StringExprNode>(
       EXT_STR_ANY(cur_tok.val));
     return adv(), std::move(ptr);
   }
 
-  expr_t parse_paren() {
+  node_t parse_paren() {
     adv();
-    expr_t expr = parse_expr();
+    node_t expr = parse_expr();
     if (!expr) return nullptr;
 
     if (cur_tok.val.type() == typeid(char) && 
@@ -75,7 +77,7 @@ public:
     return expr;
   }
 
-  expr_t parse_id() {
+  node_t parse_id() {
     std::string id = EXT_STR_ANY(cur_tok.val);
     adv();
 
@@ -84,10 +86,10 @@ public:
     
     // go on to parse call expr
     adv();
-    std::vector<expr_t> args;
+    std::vector<node_t> args;
     if (!any_eq_char(cur_tok.val, ')'))
       while (1) {
-        if (expr_t arg = parse_expr())
+        if (node_t arg = parse_expr())
           args.push_back(std::move(arg));
         else return nullptr; // having thrown
 
@@ -103,7 +105,7 @@ public:
     return std::make_unique<CallExprNode>(id, std::move(args));
   }
 
-  expr_t parse_prim(bool hasSign = false) {
+  node_t parse_prim(bool hasSign = false) {
     if (cur_tok.type == tok_id)
       return parse_id();
     if (cur_tok.type == tok_lit_num)
@@ -124,8 +126,12 @@ public:
       return parse_if();
     if (cur_tok.type == tok_kw_for)
       return parse_for();
+    if (cur_tok.is_type())
+      return parse_dvar();
     if (any_eq_char(cur_tok.val, '('))
       return parse_paren();
+    if (any_eq_char(cur_tok.val, '{'))
+      return parse_block();
     if (!hasSign && cur_tok.type == tok_other) {
       if (any_eq_char(cur_tok.val, '+')) {
         auto expr = (adv(), parse_prim(true));
@@ -139,9 +145,31 @@ public:
     return log_err("identify expr token failed.");
   }
 
+  // parse code blocks, which contains several stmt
+  // and owns name scope.
+  // r_b = 0 ==> normal (if no brace, only parse one stmt)
+  // r_b = 1 ==> (for function) brace is necessary
+  block_t parse_block(bool require_brace = false) {
+    std::vector<stmt_t> v;
+    if (cur_tok.type == tok_other && any_eq_char(cur_tok.val, '{')) {
+      adv();
+      while (1) {
+        if (cur_tok.type == tok_other
+            && any_eq_char(cur_tok.val, '}'))
+          { adv(); break; }
+        v.push_back(std::move(parse_stmt()));
+      }
+    } else {
+      if (require_brace) return log_err(
+            "unexpected token, a left brace is expected for the start of the block.");
+      v.push_back(std::move(parse_stmt()));
+    }
+    return std::make_unique<BlockNode>(std::move(v));
+  }
+
   // lhs binop(pr) rest_section
   //     ^ cur_pos
-  expr_t parse_binrhs(int oppr, expr_t lhs) {
+  node_t parse_binrhs(int oppr, node_t lhs) {
     while (1) {
       int pr = get_cur_prior();
 
@@ -150,7 +178,7 @@ public:
       // it must be a binop
       char op = std::any_cast<char>(cur_tok.val);
       adv();
-      expr_t rhs = parse_prim();
+      node_t rhs = parse_prim();
       if (!rhs) return nullptr;
 
       // get a binop again(next)
@@ -186,9 +214,18 @@ public:
     
     adv();
     std::vector<Argu> args;
+    bool varargs = false;
 
     if (!any_eq_char(cur_tok.val, ')'))
       while(1) {
+        if (cur_tok.type == tok_varargs) {
+          varargs = true;
+          adv();
+          if (!any_eq_char(cur_tok.val, ')'))
+            return log_err("unexpected token, the prototype should end after var args.");
+          break;
+        }
+
         if (!cur_tok.is_type())
           return log_err("unexpected token, expected a type name.");
         auto arg_ty = cur_tok.type;
@@ -203,7 +240,7 @@ public:
         adv();
       }
     adv();
-    return std::make_unique<ProtoNode>(id, rtn_ty, args);
+    return std::make_unique<ProtoNode>(id, rtn_ty, args, varargs);
   }
 
   // extern func_prototype
@@ -223,23 +260,18 @@ public:
     proto_t proto = parse_proto();
     if (!proto) return nullptr;
 
-    // ':' tool
-    if (cur_tok.type != tok_other || !any_eq_char(cur_tok.val, ':'))
-      return log_err("unexpected token, expected ':'.");
-
-    adv(); // func_body_expr
-    expr_t body = parse_expr();
+    auto body = parse_block(true);
     if (!body) return nullptr;
 
     return std::make_unique<FuncNode>(std::move(proto), std::move(body));
   }
 
-  expr_t parse_if() {
+  node_t parse_if() {
     if (cur_tok.type != tok_kw_if)
       return log_err("unexpected token, expected the keyword if.");
 
     adv(); // cond
-    expr_t cond, then, els;
+    node_t cond, then, els;
     cond = parse_expr();
     if (!cond) return nullptr;
     if (cur_tok.type != tok_kw_then)
@@ -258,9 +290,9 @@ public:
     return std::make_unique<IfExprNode>(std::move(cond), std::move(then), std::move(els));
   }
 
-  expr_t parse_for() {
+  node_t parse_for() {
     if (cur_tok.type != tok_kw_for)
-      return log_err("unexpected token, expected the keyword for.");
+      return log_err("unexpected token, expected the keyword \"for\".");
     
     adv(); // var
     if (cur_tok.type != tok_id)
@@ -281,14 +313,14 @@ public:
     auto end = parse_expr();
     if (!end) return nullptr;
 
-    expr_t incr;
+    node_t incr;
     if (cur_tok.type == tok_other && any_eq_char(cur_tok.val, ';')) {
       incr = (adv(), parse_expr());
       if (!incr) return nullptr;
     }
 
     if (cur_tok.type != tok_kw_in)
-      return log_err("unexpected token, expected the keyword in.");
+      return log_err("unexpected token, expected the keyword \"in\".");
     
     adv();
     auto body = parse_expr();
@@ -298,23 +330,68 @@ public:
            std::move(end), std::move(incr), std::move(body));
   }
 
+  node_t parse_dvar() {
+    tag_tok ty = cur_tok.type;
+    adv();
+
+    std::vector<std::pair<Var, node_t>> lst;
+
+    while(1) {
+      if (cur_tok.type != tok_id)
+        log_err("unexpected token, expected an identifier.");
+      Var v = { EXT_STR_ANY(cur_tok.val), ty };
+
+      adv();
+      node_t init;
+      if (any_eq_char(cur_tok.val, '=')) {
+        adv();
+        init = parse_expr();
+        if (!init) return nullptr;
+      } else init = nullptr;
+      
+      lst.emplace_back(v, std::move(init));
+      if (any_eq_char(cur_tok.val, ';'))
+        break;
+      if (!any_eq_char(cur_tok.val, ','))
+        return log_err("unexpected token, expected a ','");
+      adv();
+    }
+
+    return std::make_unique<VarDeclNode>(lst);
+  }
+
   // global scope (naked) codes, considered as a function
   func_t parse_toplevel() {
-    expr_t body = parse_expr();
-    if (!body) return nullptr;
+    std::vector<stmt_t> v;
+    v.push_back(std::move(parse_prim()));
     
     // autoly assign a prototype
-    proto_t proto = std::make_unique<ProtoNode>("__top_level__", tok_kw_number, std::vector<Argu>());
-    return std::make_unique<FuncNode>(std::move(proto), std::move(body));
+    proto_t proto = std::make_unique<ProtoNode>(
+      "__top_level__", tok_kw_number,
+      std::vector<Argu>(), false
+    );
+    return std::make_unique<FuncNode>(
+      std::move(proto),
+      std::make_unique<BlockNode>(std::move(v))
+    );
   }
 
   // a calculatable expression
-  expr_t parse_expr() {
-    expr_t lhs = parse_prim();
+  node_t parse_expr() {
+    node_t lhs = parse_prim();
     if (!lhs) return nullptr;
 
-    // equivalent model, root binary expr_t is 0
+    // equivalent model, root binary node_t is 0
     return parse_binrhs(0, std::move(lhs));
+  }
+
+  stmt_t parse_stmt() {
+    stmt_t s = parse_expr();
+    // stmt must end with token ';'
+    if (cur_tok.type != tok_other
+      || !any_eq_char(cur_tok.val, ';'))
+      log_err("a C-statement must end with ';'!");
+    return adv(), std::move(s);
   }
   
   // stream power up!
@@ -326,7 +403,7 @@ public:
       }
       switch (cur_tok.type)
       {
-      case tok_eof: return void(std::cerr << std::endl);
+      case tok_eof: return void(std::cerr << "EOF read, exiting." << std::endl);
       case tok_invalid: continue;
       case tok_kw_def:
       {

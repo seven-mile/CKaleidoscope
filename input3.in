@@ -1,0 +1,7 @@
+extern number printf(string fmt, ...);
+
+def number main() {
+  number num = 15.98, pi = 3.14159, div;
+  div = num / pi;
+  printf("%f\n", div);
+}

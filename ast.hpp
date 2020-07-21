@@ -1,9 +1,11 @@
 #pragma once
 
 #include <iostream>
+#include <llvm-9/llvm/IR/Value.h>
 #include <map>
 #include <memory>
 #include <ostream>
+#include <stdexcept>
 #include <vector>
 #include <functional>
 
@@ -58,7 +60,31 @@ inline std::string get_raw_string(std::string str) {
   return str;
 }
 
+inline llvm::Value* get_default_value(tag_tok t) {
+  static llvm::Value
+    *bl = llvm::ConstantInt::get(g_context, llvm::APInt(1, 0)),
+    *ch = llvm::ConstantInt::get(g_context, llvm::APInt(8, 0)),
+    *st = g_builder.CreateGlobalStringPtr(""),
+    *db = llvm::ConstantFP::get(g_context, llvm::APFloat(.0));
+          
+  switch (t) {
+  case tok_kw_bool:
+    return bl;
+  case tok_kw_char:
+    return ch;
+  case tok_kw_string:
+    return st;
+  case tok_kw_number:
+    return db;
+  default:
+    return nullptr; // log_err<std::logic_error>("no default value found!");
+  }
+}
+
 inline llvm::Function* get_func(std::string name);
+
+inline llvm::AllocaInst* create_alloca_in_entry(
+    llvm::Function *func, const std::string var);
 
 // =========================
 // Global Variants
@@ -79,13 +105,76 @@ public:
   virtual llvm::Function* codegen() = 0;
 };
 
-class ExprNode : public Outputable, ValueGenable {
+class Node : public Outputable, ValueGenable {
 public:
-  virtual ~ExprNode() = default;
+  virtual ~Node() = default;
   virtual llvm::Value* codegen() = 0;
 };
 
+using node_t = std::unique_ptr<Node>;
+
+using StmtNode = Node;
+using stmt_t = std::unique_ptr<StmtNode>;
+
+
+using ExprNode = Node;
 using expr_t = std::unique_ptr<ExprNode>;
+
+class DeclNode : public StmtNode {
+public:
+  virtual ~DeclNode() = default;
+  virtual llvm::Value* codegen() = 0;
+};
+
+// For var
+
+typedef struct Var {
+  std::string name;
+  tag_tok type;
+
+  Var(const std::string& name, zMile::tag_tok type) : name(name), type(type)
+  {
+    if (!tok_is_type(type))
+      assert(log_err<std::logic_error>("type error: invalid type assigned to the variable."));
+  }
+
+  std::string to_string(bool hasType = false) const {
+    if (hasType) return map_tok[type] + " " + name;
+    else return name;
+  }
+} Argu;
+
+inline llvm::AllocaInst* create_alloca_in_entry(
+    llvm::Function *func, const Var var)
+{
+  llvm::IRBuilder<> b_(&func->getEntryBlock(), func->getEntryBlock().begin());
+  return b_.CreateAlloca(get_type_of_tok(var.type), nullptr, var.name);
+}
+
+class BlockNode : public StmtNode {
+  using list_t = std::vector<stmt_t>;
+  list_t v;
+  std::vector<std::string> named_values;
+public:
+  BlockNode(list_t v) : v(std::move(v)) { named_values.clear(); }
+  virtual ~BlockNode() = default;
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ BlockNode, \"list\": ";
+    output_list<stmt_t>(v, [](auto& x, auto& os){ x->output(os); });
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    g_bl_now = this;
+
+    for (auto &x:v) x->codegen();
+
+    for (auto &x:named_values) g_named_values[x].pop();
+
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+  }
+  virtual std::vector<std::string>& get_nv() { return named_values; }
+};
+using block_t = std::unique_ptr<BlockNode>;
 
 class NumExprNode : public ExprNode {
   double val;
@@ -150,10 +239,13 @@ public:
   }
 
   virtual llvm::Value* codegen() override {
-    auto ret = g_named_values[id];
-    if (!ret) return log_err("unknown variable name.");
-    return ret;
+    llvm::Value* ptr = g_named_values[id].top();
+    if (!ptr) return log_err("unknown variable name.");
+
+    return g_builder.CreateLoad(ptr, id);
   }
+
+  std::string get_name() const { return id; }
 };
 
 class BinExprNode : public ExprNode {
@@ -174,6 +266,17 @@ public:
   }
 
   virtual llvm::Value* codegen() override {
+    // special for assignment
+    if (op == '=') {
+      auto R = right->codegen();
+
+      auto L = g_named_values[dynamic_cast<VarExprNode*>(left.get())->get_name()].top();
+      if (!L || !R) return nullptr;
+      g_builder.CreateStore(R, L);
+      // the value of assignment is rhs
+      return R;
+    }
+
     auto L = left->codegen(), R = right->codegen();
     if (!L || !R) return nullptr;
     
@@ -193,6 +296,10 @@ public:
       return g_builder.CreateFCmpULT(L, R, "lt");
     case '>':
       return g_builder.CreateFCmpUGT(L, R, "gt");
+    case -'<':
+      return g_builder.CreateFCmpULE(L, R, "le");
+    case -'>':
+      return g_builder.CreateFCmpUGE(L, R, "ge");
     default:
       return log_err("invalid binary operator.");
       break;
@@ -217,7 +324,9 @@ public:
     llvm::Function *l_fun = get_func(func);
     if (!l_fun) return log_err("unknown function reference.");
     
-    if (args.size() != l_fun->arg_size()) return log_err("incorrect # arguments passed.");
+    if ((l_fun->isVarArg() && args.size() < l_fun->arg_size()) ||
+         (!l_fun->isVarArg() && args.size() != l_fun->arg_size()))
+            return log_err("incorrect # arguments passed.");
 
     std::vector<llvm::Value*> lv_args;
     for (size_t i = 0, e = args.size(); i != e; i++) {
@@ -337,8 +446,7 @@ public:
     llvm::PHINode* phi = g_builder.CreatePHI(llvm::Type::getDoubleTy(g_context), 2, var);
     phi->addIncoming(vl_start, bl_now);
 
-    auto vl_old = g_named_values[var];
-    g_named_values[var] = phi;
+    g_named_values[var].push(create_alloca_in_entry(func, Var { var, tok_kw_number }));
 
     auto vl_body = body->codegen();
     if (!vl_body) return nullptr;
@@ -363,38 +471,58 @@ public:
     g_builder.SetInsertPoint(bl_after);
     phi->addIncoming(vl_incred, bl_loopend);
 
-    if (vl_old) g_named_values[var] = vl_old;
-    else g_named_values.erase(var);
+    g_named_values[var].pop();
 
     return llvm::Constant::getNullValue(llvm::Type::getDoubleTy(g_context));
   }
 };
 
+class VarDeclNode : public DeclNode {
+  using ele_t = std::pair<Var, expr_t>;
+  using list_t = std::vector<ele_t>;
+  list_t lst;
+
+public:
+  VarDeclNode(list_t& lst) : lst(std::move(lst)) {  }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ VarDeclNode, \"lst\": ";
+    output_list<ele_t>(lst, [](auto& x, auto& os) {
+      os << "{ \"name\": \"" << x.first.name << "\", "
+         << "\"type\": \"" << map_tok[x.first.type] << "\", "
+         << "\"init\": ";
+      if (x.second) x.second->output();
+      else os << "null";
+      os << " }";
+    });
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    for (auto&& [v, init] : lst) {
+      // codegen: v = init
+      auto I = init ? init->codegen() : 
+        get_default_value(v.type);
+      if (init && !I) return nullptr;
+      auto A = g_builder.CreateAlloca(get_type_of_tok(v.type), nullptr, v.name);
+      if (I) g_builder.CreateStore(I, A);
+      // maintain the symbol table
+      g_named_values[v.name].push(A);
+      // record itself for later erasing
+      g_bl_now->get_nv().push_back(v.name);
+    }
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+  }
+};
+
 // classes for functions
-
-typedef struct Var {
-  std::string name;
-  tag_tok type;
-
-  Var(const std::string& name, zMile::tag_tok type) : name(name), type(type)
-  {
-    if (!tok_is_type(type))
-      assert(log_err<std::logic_error>("type error: invalid type assigned to the variable."));
-  }
-
-  std::string to_string(bool hasType = false) const {
-    if (hasType) return map_tok[type] + " " + name;
-    else return name;
-  }
-} Argu;
 
 class ProtoNode : public Outputable, FuncGenable {
   std::string id;
   tag_tok type;
   std::vector<Argu> args;
+  bool var_args;
 public:
-  ProtoNode(std::string id, tag_tok type, std::vector<Argu> args)
-    : id(id), type(type), args(std::move(args)) {  }
+  ProtoNode(std::string id, tag_tok type, std::vector<Argu> args, bool var_args)
+    : id(id), type(type), args(std::move(args)), var_args(var_args) {  }
   
   // { Prototype, "id": "cos", "type": "number", "args": ["number theta"] }
   virtual void output(std::ostream & os = std::cerr) override {
@@ -417,7 +545,7 @@ public:
     for (const auto& x:args)
       vArgsTy.push_back(get_type_of_tok(x.type));
     
-    auto l_fun_ty = llvm::FunctionType::get(get_type_of_tok(type), vArgsTy, false);
+    auto l_fun_ty = llvm::FunctionType::get(get_type_of_tok(type), vArgsTy, var_args);
     auto l_fun = llvm::Function::Create(l_fun_ty, llvm::Function::ExternalLinkage, id, g_module.get());
     
     unsigned idx = 0;
@@ -432,10 +560,10 @@ using proto_t = std::unique_ptr<ProtoNode>;
 
 class FuncNode : public Outputable, FuncGenable {
   proto_t proto;
-  expr_t body; // what it will be calculated.
+  block_t body; // what it will be calculated.
 public:
   FuncNode(proto_t proto,
-    expr_t body) : proto(std::move(proto)),
+    block_t body) : proto(std::move(proto)),
       body(std::move(body)) {  }
 
   // { Function, { Prototype, $...$ }, { Body, "..." } }
@@ -470,9 +598,14 @@ public:
     auto bas_blo = llvm::BasicBlock::Create(g_context, "entry", fun);
     g_builder.SetInsertPoint(bas_blo);
 
-    g_named_values.clear();
-    for (auto& arg: fun->args())
-      g_named_values[arg.getName()] = &arg;
+    
+    for (auto& arg: fun->args()) {
+      body->get_nv().push_back(arg.getName());
+      auto alloca = create_alloca_in_entry(
+          fun, Var { arg.getName(), find_value_type(arg.getType()) });
+      g_builder.CreateStore(&arg, alloca);
+      g_named_values[arg.getName()].push(alloca);
+    }
 
     auto vl_body = body->codegen();
     if (vl_body) {
@@ -480,8 +613,6 @@ public:
       llvm::verifyFunction(*fun);
 
       // optimize it
-      g_fpm->run(*fun);
-
       g_fpm->run(*fun);
 
       return fun;
@@ -504,5 +635,6 @@ inline llvm::Function* get_func(std::string name) {
   
   return nullptr;
 }
+
 
 }

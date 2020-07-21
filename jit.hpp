@@ -129,6 +129,8 @@ inline void init_jit_env() {
   llvm::InitializeNativeTargetAsmParser();
 
   // for other operations
+  auto res = dlsym(nullptr, "print");
+       res = dlsym(nullptr, "printd");
 
   g_jit = std::make_unique<llvm::orc::KaleidoscopeJIT>();
 }

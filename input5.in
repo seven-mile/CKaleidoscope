@@ -1,0 +1,17 @@
+extern number printf(string fmt, ...);
+
+number f[8];
+
+def number fib(number n) {
+  // memorized
+  if (f[n]) return f[n];
+  if (n <= 2) return 1;
+  else return f[n] = fib(n-1) + fib(n-2);
+}
+
+def number main() {
+  for (number i=1; i<=7; i=i+1)
+    printf("fib(%.0f) = %f\n", i, fib(i));
+
+  return 0;
+}

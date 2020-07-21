@@ -1,5 +1,6 @@
 extern number tgamma(number x);
 extern number lgamma(number x);
+# there's a problem... hey
 extern number print(string str);
 extern number printd(number val);
 def number gamma(number x, bool log): if log then lgamma(x) else tgamma(x);

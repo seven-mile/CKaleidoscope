@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <cctype>
 #include <functional>
 #include <any>
 
@@ -44,13 +45,16 @@ enum tag_tok : char {
     tok_lit_char,
     tok_lit_string,
 
+    // other tools
+    tok_varargs,
+
     tok_other
 };
 
 const std::string map_tok[] = {
   "EOF", "Define", "Extern", "Number", "String", "Char", "Bool", "True", "False",
   "If", "Then", "Else", "For", "In", "Identity", "Literal Number",
-  "Literal Char", "Literal String", "Other Lang Tool"
+  "Literal Char", "Literal String", "VarArgs Dots", "Other Lang Tool"
 };
 
 inline const bool tok_is_type(const tag_tok t) {
@@ -204,6 +208,17 @@ public:
 
       upd();
 
+      if (tmp_str == "...")
+        return { tok_varargs, tmp_str };
+      
+      size_t verify_dot = 0;
+      for (char ch : tmp_str) {
+        if (ch == '.') if (++verify_dot > 1)
+          throw syntax_error("two many dots in float number.");
+        if (!isdigit(ch) && ch != '.')
+          throw syntax_error("invalid literal float number.");
+      }
+
       num = strtod(tmp_str.c_str(), nullptr);
       return { tok_lit_num, num };
     }
@@ -251,6 +266,10 @@ public:
     // other symbols
     char tmp_ch = ~file;
     !file;
+
+    if (tmp_ch == '<' || tmp_ch == '>') if (~file == '=')
+      { !file; return { tok_other, -tmp_ch }; }
+
     return { tok_other, tmp_ch };
   }
 
