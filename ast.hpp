@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <llvm-9/llvm/IR/Value.h>
+#include <llvm-9/llvm/Support/raw_ostream.h>
 #include <map>
 #include <memory>
 #include <ostream>
@@ -248,6 +249,44 @@ public:
   std::string get_name() const { return id; }
 };
 
+class VarDeclNode : public DeclNode {
+  using ele_t = std::pair<Var, expr_t>;
+  using list_t = std::vector<ele_t>;
+  list_t lst;
+
+public:
+  VarDeclNode(list_t& lst) : lst(std::move(lst)) {  }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ VarDeclNode, \"lst\": ";
+    output_list<ele_t>(lst, [](auto& x, auto& os) {
+      os << "{ \"name\": \"" << x.first.name << "\", "
+         << "\"type\": \"" << map_tok[x.first.type] << "\", "
+         << "\"init\": ";
+      if (x.second) x.second->output();
+      else os << "null";
+      os << " }";
+    });
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    for (auto&& [v, init] : lst) {
+      // codegen: v = init
+      auto I = init ? init->codegen() : 
+        get_default_value(v.type);
+      if (init && !I) return nullptr;
+      auto A = g_builder.CreateAlloca(get_type_of_tok(v.type), nullptr, v.name);
+      if (I) g_builder.CreateStore(I, A);
+      // maintain the symbol table
+      g_named_values[v.name].push(A);
+      // record itself for later erasing
+      g_bl_now->get_nv().push_back(v.name);
+    }
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+  }
+
+  list_t& get_list() { return lst; }
+};
+
 class BinExprNode : public ExprNode {
   char op;
   expr_t left, right;
@@ -338,11 +377,12 @@ public:
   }
 };
 
-class IfExprNode : public ExprNode {
-  expr_t cond, then, els;
+class IfStmtNode : public StmtNode {
+  expr_t cond;
+  block_t then, els;
 
 public:
-  IfExprNode(expr_t cond, expr_t then, expr_t els)
+  IfStmtNode(expr_t cond, block_t then, block_t els)
     : cond(std::move(cond)), then(std::move(then)), els(std::move(els)) {  }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ IfExpr, \"cond\": ";
@@ -379,7 +419,7 @@ public:
     if (!vl_then) return nullptr;
 
     // skip else, br to merg
-    g_builder.CreateBr(bl_merg);
+    auto ref1 = g_builder.CreateBr(bl_merg);
     bl_then = g_builder.GetInsertBlock();
 
     // insert the else block
@@ -390,126 +430,110 @@ public:
     if (!vl_else) return nullptr;
 
     // Also
-    g_builder.CreateBr(bl_merg);
+    auto ref2 = g_builder.CreateBr(bl_merg);
     bl_else = g_builder.GetInsertBlock();
 
     func->getBasicBlockList().push_back(bl_merg);
     g_builder.SetInsertPoint(bl_merg);
 
-    llvm::PHINode* phi = g_builder.CreatePHI(llvm::Type::getDoubleTy(g_context), 2, "iftmp");
+    g_ref_bb[bl_merg->getName()].push_back(ref1);
+    g_ref_bb[bl_merg->getName()].push_back(ref2);
 
-    // Judging by which block you come from, return value
-    phi->addIncoming(vl_then, bl_then);
-    phi->addIncoming(vl_else, bl_else);
-
-    return phi;
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
   }
 };
 
 class ForExprNode : public ExprNode {
-  std::string var;
-  expr_t start, end, incr, body;
+  stmt_t start, every;
+  expr_t cond;
+  block_t body;
+  bool hasVar;
 public:
-  ForExprNode(std::string var, expr_t start, expr_t end, expr_t incr, expr_t body) :
-    var(var), start(std::move(start)), end(std::move(end)),
-    incr(std::move(incr)), body(std::move(body)) {
-      if (!incr) this->incr = std::make_unique<NumExprNode>(1);
-    }
+  ForExprNode(stmt_t start, expr_t cond, stmt_t every, block_t body, bool hasVar) :
+    start(std::move(start)), cond(std::move(cond)),
+    every(std::move(every)), body(std::move(body)), hasVar(hasVar) {  }
   
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ ForExpr, \"var\": \"" << var << "\"";
-    os << ", \"start\": ";
+    os << "{ ForStmt, \"start\": ";
     start->output();
-    os << ", \"end\": ";
-    end->output();
-    os << ", \"incr\": ";
-    incr->output();
+    os << ", \"cond\": ";
+    cond->output();
+    os << ", \"every\": ";
+    every->output();
     os << ", \"body\": ";
     body->output();
     os << " }";
   }
 
   virtual llvm::Value* codegen() override {
-    // g_builder.CreateIntToPtr()
-    auto vl_start = start->codegen();
-    if (!vl_start) return nullptr;
-    
     auto func = g_builder.GetInsertBlock()->getParent();
 
-    // bl_now is just for PHINode's judgement
-    auto bl_now   = g_builder.GetInsertBlock(),
-         bl_loop  = llvm::BasicBlock::Create(g_context, "loop", func);
+    auto vl_start = start->codegen();
+    if (!vl_start) return nullptr;
+
+    if (hasVar) {
+      auto& lst = ((VarDeclNode*)start.get())->get_list();
+      for (auto&& [var, t] : lst)
+        g_named_values[var.name].push((llvm::AllocaInst*)vl_start);
+    }
+
+
+    auto vl_cond = cond->codegen();
+    if (vl_cond->getType()->getTypeID() != llvm::Type::getInt1Ty(g_context)->getTypeID())
+    vl_cond = g_builder.CreateFCmpONE(
+      vl_cond,
+      llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
+      "ifcond");
+    
+    auto bl_loop  = llvm::BasicBlock::Create(g_context, "loop", func),
+         bl_body  = llvm::BasicBlock::Create(g_context, "body", func),
+         bl_lend  = llvm::BasicBlock::Create(g_context, "lend", func),
+         bl_after = llvm::BasicBlock::Create(g_context, "after", func);
 
     g_builder.CreateBr(bl_loop);
     g_builder.SetInsertPoint(bl_loop);
 
-    llvm::PHINode* phi = g_builder.CreatePHI(llvm::Type::getDoubleTy(g_context), 2, var);
-    phi->addIncoming(vl_start, bl_now);
+    g_builder.CreateCondBr(vl_cond, bl_body, bl_after);
 
-    g_named_values[var].push(create_alloca_in_entry(func, Var { var, tok_kw_number }));
+    g_builder.SetInsertPoint(bl_body);
 
     auto vl_body = body->codegen();
     if (!vl_body) return nullptr;
 
-    auto vl_incr = incr->codegen();
-    if (!vl_incr) return nullptr;
+    g_builder.CreateBr(bl_lend);
+    g_builder.SetInsertPoint(bl_lend);
 
-    auto vl_incred = g_builder.CreateFAdd(phi, vl_incr, "incr");
+    auto vl_every = body->codegen();
+    if (!vl_every) return nullptr;
 
-    auto vl_end = end->codegen();
-    if (!vl_end) return nullptr;
-
-    if (!vl_end->getType()->isIntegerTy(1))
-      vl_end = g_builder.CreateFCmpONE(
-        vl_end, llvm::ConstantFP::get(g_context, llvm::APFloat(0.)), "loopcmp");
-    
-    auto bl_loopend = g_builder.GetInsertBlock(),
-         bl_after = llvm::BasicBlock::Create(g_context, "after", func);
-    
-    g_builder.CreateCondBr(vl_end, bl_loop, bl_after);
+    g_ref_bb[bl_loop->getName()].push_back(g_builder.CreateBr(bl_loop));
 
     g_builder.SetInsertPoint(bl_after);
-    phi->addIncoming(vl_incred, bl_loopend);
+    
 
-    g_named_values[var].pop();
+    if (hasVar) {
+      auto& lst = ((VarDeclNode*)start.get())->get_list();
+      for (auto&& [var, t] : lst)
+        g_named_values[var.name].pop();
+    }
 
-    return llvm::Constant::getNullValue(llvm::Type::getDoubleTy(g_context));
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
   }
 };
 
-class VarDeclNode : public DeclNode {
-  using ele_t = std::pair<Var, expr_t>;
-  using list_t = std::vector<ele_t>;
-  list_t lst;
-
+class RetStmtNode : public StmtNode {
+  expr_t val;
 public:
-  VarDeclNode(list_t& lst) : lst(std::move(lst)) {  }
+  RetStmtNode(expr_t val) : val(std::move(val)) {  }
+
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ VarDeclNode, \"lst\": ";
-    output_list<ele_t>(lst, [](auto& x, auto& os) {
-      os << "{ \"name\": \"" << x.first.name << "\", "
-         << "\"type\": \"" << map_tok[x.first.type] << "\", "
-         << "\"init\": ";
-      if (x.second) x.second->output();
-      else os << "null";
-      os << " }";
-    });
+    os << "{ RetStmtNode, \"val\": ";
+    val->output();
     os << " }";
   }
+
   virtual llvm::Value* codegen() override {
-    for (auto&& [v, init] : lst) {
-      // codegen: v = init
-      auto I = init ? init->codegen() : 
-        get_default_value(v.type);
-      if (init && !I) return nullptr;
-      auto A = g_builder.CreateAlloca(get_type_of_tok(v.type), nullptr, v.name);
-      if (I) g_builder.CreateStore(I, A);
-      // maintain the symbol table
-      g_named_values[v.name].push(A);
-      // record itself for later erasing
-      g_bl_now->get_nv().push_back(v.name);
-    }
-    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+    return g_builder.CreateRet(val->codegen());
   }
 };
 
@@ -576,10 +600,6 @@ public:
   }
 
   virtual llvm::Function* codegen() override {
-    // special for top level func, set the type
-    // if (proto->get_name() == "__top_level__")
-    //   proto->set_type(find_value_type(vl_body->getType()));
-    
     // ownership transfered, we need a reference
     auto &rpr = *proto;
     g_protos[proto->get_name()] = std::move(proto);
@@ -609,7 +629,33 @@ public:
 
     auto vl_body = body->codegen();
     if (vl_body) {
-      g_builder.CreateRet(vl_body);
+      auto & bbl = fun->getBasicBlockList();
+
+      // llvm doesn't allow dead(empty) blocks,
+      // so we are to remove them.
+      // since removing may lead to more dead blocks,
+      // we simply repeat it.
+      while (1) {
+        // if there's no other dead blocks, break;
+        bool flg = 1;
+        size_t sz = bbl.size(), cnt = 0;
+        for (auto& x:bbl)
+        {
+          if (++cnt > sz) break;
+          if (x.empty()) {
+            flg = 0;
+            auto &ref = g_ref_bb[x.getName()];
+            auto szz = ref.size();
+            for (auto& y:ref)
+              y->removeFromParent();
+            fun->getBasicBlockList().erase(x);
+          }
+        }
+        if (flg) break;
+      }
+
+      g_module->print(llvm::errs(), nullptr);
+
       llvm::verifyFunction(*fun);
 
       // optimize it

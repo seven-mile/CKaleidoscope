@@ -31,11 +31,12 @@ enum tag_tok : char {
     tok_kw_false,
 
     tok_kw_if,
-    tok_kw_then,
     tok_kw_else,
 
     tok_kw_for,
     tok_kw_in,
+
+    tok_kw_return,
 
     // identifier
     tok_id,
@@ -53,7 +54,7 @@ enum tag_tok : char {
 
 const std::string map_tok[] = {
   "EOF", "Define", "Extern", "Number", "String", "Char", "Bool", "True", "False",
-  "If", "Then", "Else", "For", "In", "Identity", "Literal Number",
+  "If", "Else", "For", "In", "Return", "Identity", "Literal Number",
   "Literal Char", "Literal String", "VarArgs Dots", "Other Lang Tool"
 };
 
@@ -186,8 +187,6 @@ public:
       }
         else if (tmp_str == "if") {
         curx = tok_kw_if;
-      } else if (tmp_str == "then") {
-        curx = tok_kw_then;
       } else if (tmp_str == "else") {
         curx = tok_kw_else;
       }
@@ -196,6 +195,9 @@ public:
       } else if (tmp_str == "in") {
         curx = tok_kw_in;
       } 
+        else if (tmp_str == "return") {
+        curx = tok_kw_return;
+      }
         else curx = tok_id;
 
       return { curx, tmp_str };
@@ -268,7 +270,7 @@ public:
     !file;
 
     if (tmp_ch == '<' || tmp_ch == '>') if (~file == '=')
-      { !file; return { tok_other, -tmp_ch }; }
+      { !file; return { tok_other, char(-tmp_ch) }; }
 
     return { tok_other, tmp_ch };
   }

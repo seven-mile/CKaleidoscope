@@ -32,6 +32,8 @@ class Parser {
 
   inline void adv() { cur_tok = lex.get_token(); }
   inline int get_cur_prior() {
+    bool kk = typeid('k') == typeid(-'k');
+
     if (cur_tok.type != tok_other || cur_tok.val.type() != typeid(char))
       return -1; // always pass
     
@@ -126,6 +128,8 @@ public:
       return parse_if();
     if (cur_tok.type == tok_kw_for)
       return parse_for();
+    if (cur_tok.type == tok_kw_return)
+      return parse_return();
     if (cur_tok.is_type())
       return parse_dvar();
     if (any_eq_char(cur_tok.val, '('))
@@ -269,25 +273,31 @@ public:
   node_t parse_if() {
     if (cur_tok.type != tok_kw_if)
       return log_err("unexpected token, expected the keyword if.");
-
     adv(); // cond
-    node_t cond, then, els;
+
+    if (cur_tok.type != tok_other || !any_eq_char(cur_tok.val, '('))
+      return log_err("unexpected token, expected the token '('.");
+    adv(); // '('
+
+    node_t cond; block_t then, els;
     cond = parse_expr();
     if (!cond) return nullptr;
-    if (cur_tok.type != tok_kw_then)
-      return log_err("unexpected token, expected the keyword then.");
+
+    if (cur_tok.type != tok_other || !any_eq_char(cur_tok.val, ')'))
+      return log_err("unexpected token, expected the token ')'.");
+    adv(); // ')'
     
-    adv(); // then
-    then = parse_expr();
+    then = parse_block();
     if (!then) return nullptr;
+
     if (cur_tok.type != tok_kw_else)
       return log_err("unexpected token, expected the keyword else.");
 
     adv(); // else
-    els  = parse_expr();
+    els  = parse_block();
     if (!els ) return nullptr;
 
-    return std::make_unique<IfExprNode>(std::move(cond), std::move(then), std::move(els));
+    return std::make_unique<IfStmtNode>(std::move(cond), std::move(then), std::move(els));
   }
 
   node_t parse_for() {
@@ -330,11 +340,22 @@ public:
            std::move(end), std::move(incr), std::move(body));
   }
 
-  node_t parse_dvar() {
+  stmt_t parse_return() {
+    adv();
+
+    auto V = parse_expr();
+    if (cur_tok.type == tok_other
+      && any_eq_char(cur_tok.val, ';'))
+      adv();
+    
+    return std::make_unique<RetStmtNode>(std::move(V));
+  }
+
+  stmt_t parse_dvar() {
     tag_tok ty = cur_tok.type;
     adv();
 
-    std::vector<std::pair<Var, node_t>> lst;
+    std::vector<std::pair<Var, expr_t>> lst;
 
     while(1) {
       if (cur_tok.type != tok_id)
@@ -363,7 +384,7 @@ public:
   // global scope (naked) codes, considered as a function
   func_t parse_toplevel() {
     std::vector<stmt_t> v;
-    v.push_back(std::move(parse_prim()));
+    v.push_back(std::move(parse_stmt()));
     
     // autoly assign a prototype
     proto_t proto = std::make_unique<ProtoNode>(
@@ -388,10 +409,10 @@ public:
   stmt_t parse_stmt() {
     stmt_t s = parse_expr();
     // stmt must end with token ';'
-    if (cur_tok.type != tok_other
-      || !any_eq_char(cur_tok.val, ';'))
-      log_err("a C-statement must end with ';'!");
-    return adv(), std::move(s);
+    if (cur_tok.type == tok_other
+      && any_eq_char(cur_tok.val, ';'))
+      adv();
+    return std::move(s);
   }
   
   // stream power up!
@@ -413,7 +434,6 @@ public:
         def->output();
         
         if (auto tcode = def->codegen()) {
-          tcode->print(llvm::errs());
           g_jit->addModule(std::move(g_module));
           init_module_and_pass_mgr();
         }
@@ -424,10 +444,8 @@ public:
         auto ext = parse_extern();
         if (!ext) { adv(); break; }
 
-        if (auto tcode = ext->codegen()) {
-          tcode->print(llvm::errs());
+        if (auto tcode = ext->codegen())
           g_protos[ext->get_name()] = std::move(ext);
-        }
       }
       break;
       case tok_kw_if:
@@ -435,9 +453,7 @@ public:
         auto ife = parse_if();
         if (!ife) { adv(); break; }
 
-        if (auto tcode = ife->codegen()) {
-          tcode->print(llvm::errs());
-        }
+        ife->codegen();
       }
       break;
       case tok_other:
@@ -451,7 +467,6 @@ public:
         std::cerr << std::endl;
 
         if (auto tcode = top->codegen()) {
-          tcode->print(llvm::errs());
           auto hmodule = g_jit->addModule(std::move(g_module));
           init_module_and_pass_mgr();
 

@@ -22,6 +22,7 @@ add_definitions(${LLVM_DEFINITIONS})
 add_library(StdLib SHARED stdlib.cpp)
 set_target_properties(StdLib PROPERTIES VERSION 1.0 SOVERSION 1)
 
+add_definitions("-Wall -g")
 add_executable(CKaleidoscope main.cpp)
 
 llvm_map_components_to_libnames(llvm_libs interpreter

@@ -1,6 +1,8 @@
 #include <bits/stdc++.h>
+#include <cstdint>
 #include <cstdio>
 #include <llvm-9/llvm/Support/Error.h>
+#include <llvm-9/llvm/Support/raw_ostream.h>
 
 #include "global.hpp"
 #include "ast.hpp"
@@ -12,6 +14,7 @@
 
 int main(const int nargs, const char *cargs[])
 {
+  std::cout << "==============================\n";
   zMile::FileSugar* fs;
 
   if (nargs > 2) return fprintf(
@@ -36,10 +39,12 @@ int main(const int nargs, const char *cargs[])
 
   par.read_stream(nargs ^ 2);
 
+  zMile::g_module->print(llvm::errs(), nullptr);
+
   auto expr_main = zMile::g_jit->findSymbol("main");
-  if (expr_main) {
-    auto res = ((double(*)())(intptr_t)llvm::cantFail(
-      expr_main.getAddress()))();
+  auto ptr = (intptr_t)llvm::cantFail(expr_main.getAddress());
+  if (expr_main && ptr != (intptr_t)&main) {
+    auto res = ((double(*)())ptr)();
     std::cerr << "\nProgram exited with return value " << res << std::endl;
   }
 
