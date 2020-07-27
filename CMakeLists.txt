@@ -4,7 +4,10 @@ project(CKaleidoscope VERSION 0.1.0)
 include(CTest)
 enable_testing()
 
-add_test(compl CKaleidoscope ../input.in)
+add_test(compl CKaleidoscope ../test/1/input.in)
+add_test(compl CKaleidoscope ../test/2/input.in)
+add_test(compl CKaleidoscope ../test/3/input.in)
+add_test(compl CKaleidoscope ../test/more/input.in)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,6 +18,8 @@ find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+
+set(LLVM_USE_NEWPM ON)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})

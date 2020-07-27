@@ -26,9 +26,8 @@ std::unique_ptr<llvm::Module> g_module;
 std::map<std::string, std::stack<llvm::AllocaInst*>> g_named_values;
 std::unique_ptr<llvm::legacy::FunctionPassManager> g_fpm;
 std::map<std::string, std::unique_ptr<class ProtoNode>> g_protos;
-std::map<std::string, std::vector<llvm::BranchInst*>> g_ref_bb;
-
 // nullptr: global block scope
-class BlockNode* g_bl_now = nullptr;
+std::stack<class BlockNode*> g_bl_now;
+llvm::BasicBlock* g_bl_ret;
 
 }

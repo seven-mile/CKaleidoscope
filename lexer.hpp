@@ -108,6 +108,10 @@ struct Token {
     return tok_is_type(type);
   }
 
+  bool is_tool(const char tool) const {
+    return type == tok_other && any_eq_char(val, tool);
+  }
+
   void print() const {
     std::cerr << "{ " << map_tok[type] << ", ";
     print_any(val);

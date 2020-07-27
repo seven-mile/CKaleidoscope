@@ -1,0 +1,48 @@
+extern number printf(string fmt, ...);
+
+def number my_abs(number x) {
+  if (x < 0) return -x;
+  else return x;
+}
+
+def number F(number x) {
+  return 1/x;
+}
+
+def number simpson(number a, number b) {
+  number c = a + (b-a)/2;
+  return (F(a) + 4*F(c) + F(b)) * (b-a)/6;
+}
+
+def number asr4(number a,number b,number eps,number A) {
+  number c = a + (b-a)/2;
+  number L = simpson(a, c), R = simpson(c, b);
+  if (my_abs(L + R - A) <= 15 * eps) {
+    number res = L + R + (L + R - A) / 15.0;
+    printf("asr4 =(1)= %f\n", res);
+    return res;
+  }
+  number res = asr4(a, c, eps/2, L) + asr4(c, b, eps/2, R);
+  printf("asr4 =(2)= %f\n", res);
+  return res;
+}
+
+def number asr3(number a,number b,number eps) {
+  printf("asr3\n");
+  return asr4(a, b, eps, simpson(a, b));
+}
+
+# ln x = int_1^x 1/x dx
+def number my_log(number x) {
+  printf("my_log\n");
+  if (x <= 0) return 1/0;
+  if (x >  1) return -my_log(1/x);
+  return -asr3(x, 1, 0.00001);
+}
+
+def number main() {
+  number x = 15;
+  printf("my_log(%g) = %g\n", x, my_log(15));
+
+  return 0;
+}

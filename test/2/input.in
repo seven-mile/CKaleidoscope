@@ -1,0 +1,18 @@
+extern number scanf(string fmt, ...);
+extern number printf(string fmt, ...);
+extern number freopen_in(string file);
+
+def number fib(number n) {
+  if (n <= 2) return 1;
+  else return fib(n-1) + fib(n-2);
+}
+
+def number main() {
+  number n;
+  freopen_in("./test/2/data.in");
+  printf("pls input n:\n");
+  scanf("%lf", &n);
+  printf("fib(n = %g) = %g", n, fib(n));
+
+  return 0;
+}

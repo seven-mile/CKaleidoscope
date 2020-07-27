@@ -1,3 +1,0 @@
-extern number printf(string fmt, ...);
-extern number acos(number x);
-printf("pi = %f, %s\n", acos(-1), "\thello, world");

@@ -39,10 +39,16 @@ int main(const int nargs, const char *cargs[])
 
   par.read_stream(nargs ^ 2);
 
-  zMile::g_module->print(llvm::errs(), nullptr);
+  if (nargs == 2) {
+    zMile::g_module->print(llvm::dbgs(), nullptr);
 
+    // add new module to submit the current module.
+    zMile::g_jit->addModule(std::move(zMile::g_module));
+    zMile::init_module_and_pass_mgr();
+  }
   auto expr_main = zMile::g_jit->findSymbol("main");
   auto ptr = (intptr_t)llvm::cantFail(expr_main.getAddress());
+  // warning: Kaleidoscope compiler's main function may make a mess.
   if (expr_main && ptr != (intptr_t)&main) {
     auto res = ((double(*)())ptr)();
     std::cerr << "\nProgram exited with return value " << res << std::endl;

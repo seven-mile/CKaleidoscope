@@ -1,9 +1,11 @@
 #pragma once
 
 #include <llvm/IR/PassManager.h>
+#include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Scalar/GVN.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Transforms/Utils.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <memory>
 
@@ -21,8 +23,12 @@ static inline void init_module_and_pass_mgr() {
   g_fpm->add(llvm::createInstructionCombiningPass());
   g_fpm->add(llvm::createReassociatePass());
   g_fpm->add(llvm::createGVNPass());
+
   g_fpm->add(llvm::createCFGSimplificationPass());
+  
   g_fpm->add(llvm::createSROAPass());
+  g_fpm->add(llvm::createDeadInstEliminationPass());
+  g_fpm->add(llvm::createPromoteMemoryToRegisterPass());
 
   g_fpm->doInitialization();
 }

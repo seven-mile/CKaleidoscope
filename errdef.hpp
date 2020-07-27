@@ -6,7 +6,6 @@
 #define DECLARE_GENERAL_ERROR(err_name, err_base) \
 class err_name : public err_base { \
   std::string msg; \
-  int code; \
  \
   public: \
     err_name(const std::string& msg) \
