@@ -12,29 +12,25 @@ add_test(compl CKaleidoscope ../test/more/input.in)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
 
 find_package(LLVM REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
-set(LLVM_USE_NEWPM ON)
-
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-add_library(StdLib SHARED stdlib.cpp)
-set_target_properties(StdLib PROPERTIES VERSION 1.0 SOVERSION 1)
-
-add_definitions("-Wall -g")
 add_executable(CKaleidoscope main.cpp)
+add_executable(Sample test/sample.cpp)
 
-llvm_map_components_to_libnames(llvm_libs interpreter
+llvm_map_components_to_libnames(llvm_libs interpreter mcjit
   support core irreader orcjit executionengine native
   analysis instcombine object runtimedyld scalaropts)
 
-target_link_libraries(CKaleidoscope StdLib ${llvm_libs})
+target_link_libraries(CKaleidoscope ${llvm_libs})
+target_link_libraries(Sample ${llvm_libs})
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
 set(CPACK_PROJECT_VERSION ${PROJECT_VERSION})

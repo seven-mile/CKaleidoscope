@@ -30,6 +30,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include <algorithm>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <string>
@@ -101,6 +102,7 @@ private:
         return Sym;
 
     // If we can't find the symbol in the JIT, try looking in the host process.
+    if (Name == "main") return nullptr; // avoid main recursion
     if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
       return JITSymbol(SymAddr, JITSymbolFlags::Exported);
 
@@ -127,10 +129,6 @@ inline void init_jit_env() {
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
   llvm::InitializeNativeTargetAsmParser();
-
-  // for other operations
-  auto res = dlsym(nullptr, "print");
-       res = dlsym(nullptr, "printd");
 
   g_jit = std::make_unique<llvm::orc::KaleidoscopeJIT>();
 }

@@ -5,7 +5,7 @@ in order to fit the need of adding pointer types and
 array types.
 
 If you have some good ideas on that, please don't hesitate 
-to [create a issue](https://github.com/seven-mile/CKaleidoscope/issues/new).
+to [create an issue](https://github.com/seven-mile/CKaleidoscope/issues/new).
 
 [LLVM tutorial](http://llvm.org/docs/tutorial/)
 

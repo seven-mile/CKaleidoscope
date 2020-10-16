@@ -1,19 +1,29 @@
-# TODO: need array type
+extern number printf(...);
+extern number scanf(...);
 
-extern number printf(string fmt, ...);
+number C[101][101];
 
-number f[8];
-
-def number fib(number n) {
-  # memorized
-  if (f[n]) return f[n];
-  if (n <= 2) return 1;
-  else return f[n] = fib(n-1) + fib(n-2);
+def number rd() {
+  number tmp;
+  scanf("%lf", &tmp);
+  return tmp;
 }
 
 def number main() {
-  for (number i=1; i<=7; i=i+1)
-    printf("fib(%.0f) = %f\n", i, fib(i));
+  number n, m;
+
+  n = rd(); m = rd();
+
+  printf("(n,m) = %f %f\n", n, m);
+
+  for (number i = 0; i<=n; i=i+1)
+    C[i][0] = 1;
+  
+  for (number i = 1; i<=n; i=i+1)
+    for (number j = 1; j<=i; j=j+1)
+      C[i][j] = C[i-1][j-1] + C[i-1][j];
+  
+  printf("%.0f", C[n][m]);
 
   return 0;
 }

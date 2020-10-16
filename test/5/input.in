@@ -1,0 +1,25 @@
+# TODO: need array type
+
+number f[101], cnt;
+
+extern number printf(string fmt, ...);
+
+def number fib(number n) {
+  # memorized
+  if (f[n]) return f[n];
+  if (n <= 2) return 1;
+  else {
+    cnt = cnt + 1;
+    return f[n] = fib(n-1) + fib(n-2);
+  }
+}
+
+def number main() {
+  printf("hello!!! I'm fine...\n");
+  for (number i=1; i<=7; i=i+1)
+    printf("fib(%.0f) = %f\n", i, fib(i));
+    
+  printf("cnt = %f! amazing..(hahaha)", cnt);
+
+  return 0;
+}

@@ -1,0 +1,27 @@
+# temp test
+
+number x, y;
+
+extern number printf(...);
+
+def number gox() {
+  x = x * 5;
+  return x;
+}
+
+def number goy() {
+  y = y / 5;
+  return y;
+}
+
+def number main() {
+  x = 1; y = 99;
+
+  for (number i=1; i<=7; i=i+1) {
+    gox();
+    goy();
+    printf("%.0f: %f %f\n", i, x, y);
+  }
+
+  return 0;
+}

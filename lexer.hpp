@@ -80,7 +80,7 @@ inline llvm::Type* get_type_of_tok(const tag_tok t) {
   }
 }
 
-inline tag_tok find_value_type(llvm::Type* t) {
+inline tag_tok get_tok_of_type(llvm::Type* t) {
   if (t->isFloatingPointTy()) return tok_kw_number;
   if (t->isArrayTy() && 
     (t->getArrayElementType()->isIntegerTy(8)))

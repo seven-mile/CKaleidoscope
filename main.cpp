@@ -1,8 +1,7 @@
 #include <bits/stdc++.h>
-#include <cstdint>
-#include <cstdio>
-#include <llvm-9/llvm/Support/Error.h>
-#include <llvm-9/llvm/Support/raw_ostream.h>
+#include <llvm/IR/Verifier.h>
+#include <llvm/Support/Error.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include "global.hpp"
 #include "ast.hpp"
@@ -11,6 +10,9 @@
 #include "jit.hpp"
 #include "parser.hpp"
 #include "optimizer.hpp"
+
+// WARNING
+#include "stdlib.cpp"
 
 int main(const int nargs, const char *cargs[])
 {
@@ -42,21 +44,29 @@ int main(const int nargs, const char *cargs[])
   if (nargs == 2) {
     zMile::g_module->print(llvm::dbgs(), nullptr);
 
+    bool broken;
+    bool ret = llvm::verifyModule(*zMile::g_module, &llvm::dbgs(), &broken);
+
     // add new module to submit the current module.
     zMile::g_jit->addModule(std::move(zMile::g_module));
     zMile::init_module_and_pass_mgr();
   }
+
   auto expr_main = zMile::g_jit->findSymbol("main");
-  auto ptr = (intptr_t)llvm::cantFail(expr_main.getAddress());
-  // warning: Kaleidoscope compiler's main function may make a mess.
-  if (expr_main && ptr != (intptr_t)&main) {
-    auto res = ((double(*)())ptr)();
+  if (auto ptr = expr_main.getAddress())
+  {
+    auto res = ((double(*)())*ptr)();
     std::cerr << "\nProgram exited with return value " << res << std::endl;
+  }
+  else {
+    llvm::logAllUnhandledErrors(ptr.takeError(), llvm::errs(), "kaleido err: ");
+    exit(1);
   }
 
   zMile::fin_jit_env();
 
   delete fs;
+  fs = nullptr;
 
   return 0;
 }

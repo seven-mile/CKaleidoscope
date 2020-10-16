@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <stack>
 #include <llvm/IR/Instructions.h>
@@ -23,7 +24,7 @@ namespace zMile {
 llvm::LLVMContext g_context;
 llvm::IRBuilder<> g_builder(g_context);
 std::unique_ptr<llvm::Module> g_module;
-std::map<std::string, std::stack<llvm::AllocaInst*>> g_named_values;
+std::map<std::string, std::stack<llvm::Value*>> g_named_values;
 std::unique_ptr<llvm::legacy::FunctionPassManager> g_fpm;
 std::map<std::string, std::unique_ptr<class ProtoNode>> g_protos;
 // nullptr: global block scope

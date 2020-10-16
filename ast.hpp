@@ -1,7 +1,12 @@
 #pragma once
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <iostream>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/IR/GlobalVariable.h>
+
 #include <map>
 #include <memory>
 #include <ostream>
@@ -26,11 +31,10 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include "errdef.hpp"
 #include "global.hpp"
 #include "lexer.hpp"
 #include "optimizer.hpp"
-
-#include "magic_enum.hpp"
 
 namespace zMile {
 
@@ -64,13 +68,13 @@ inline std::string get_raw_string(std::string str) {
   return str;
 }
 
-inline llvm::Value* get_default_value(tag_tok t) {
-  static llvm::Value
+inline llvm::Constant* get_default_value(tag_tok t) {
+  static llvm::Constant
     *bl = llvm::ConstantInt::get(g_context, llvm::APInt(1, 0)),
     *ch = llvm::ConstantInt::get(g_context, llvm::APInt(8, 0)),
-    *st = g_builder.CreateGlobalStringPtr(""),
+    *st = llvm::ConstantPointerNull::get(llvm::Type::getInt8PtrTy(g_context)),
     *db = llvm::ConstantFP::get(g_context, llvm::APFloat(.0));
-          
+
   switch (t) {
   case tok_kw_bool:
     return bl;
@@ -81,14 +85,21 @@ inline llvm::Value* get_default_value(tag_tok t) {
   case tok_kw_number:
     return db;
   default:
-    return nullptr; // log_err<std::logic_error>("no default value found!");
+    return log_err<std::logic_error>("no default value found!");
   }
+}
+
+inline llvm::Constant* get_default_value(llvm::Type* t) {
+  if (t->isAggregateType()) return llvm::ConstantAggregateZero::get(t);
+  if (t->isPointerTy()) return llvm::ConstantPointerNull::get((llvm::PointerType*)t);
+  return get_default_value(get_tok_of_type(t));
 }
 
 inline llvm::Function* get_func(std::string name);
 
 inline llvm::AllocaInst* create_alloca_in_entry(
     llvm::Function *func, const std::string var);
+
 
 // =========================
 // AST Node
@@ -101,6 +112,7 @@ enum NodeType : int {
   StringExprNodeTy,
   BoolExprNodeTy,
   VarExprNodeTy,
+  SubScriptExprNodeTy,
   VarDeclNodeTy,
   BinExprNodeTy,
   CallExprNodeTy,
@@ -109,6 +121,8 @@ enum NodeType : int {
   RetStmtNodeTy,
   ProtoNodeTy,
   FuncNodeTy,
+  AddressExprNodeTy,
+  DisAddrExprNodeTy
 };
 
 class IOutputable {
@@ -121,6 +135,11 @@ public:
   virtual llvm::Value* codegen() = 0;
 };
 
+class ILeftValue {
+public:
+  virtual llvm::Value* codegen_left() = 0;
+};
+
 class INameGetable {
 public:
   virtual std::string get_name() const = 0;
@@ -130,7 +149,7 @@ class IHasType {
 public:
   virtual NodeType get_type() const = 0;
   virtual std::string_view get_type_str() const {
-    return magic_enum::enum_name(get_type());
+    return "";// magic_enum::enum_name(get_type());
   }
 };
 
@@ -139,6 +158,7 @@ public:
   virtual ~Node() = default;
   virtual llvm::Value* codegen() override = 0;
   virtual NodeType get_type() const override = 0;
+  virtual bool is_left() { return false; }
 };
 
 using node_t = std::unique_ptr<Node>;
@@ -150,6 +170,11 @@ using stmt_t = std::unique_ptr<StmtNode>;
 using ExprNode = Node;
 using expr_t = std::unique_ptr<ExprNode>;
 
+class LeftExprNode : public ExprNode, public ILeftValue {
+  virtual bool is_left() override { return true; }
+};
+using left_t = std::unique_ptr<LeftExprNode>;
+
 class DeclNode : public StmtNode {
 public:
   virtual ~DeclNode() = default;
@@ -160,16 +185,26 @@ public:
 
 typedef struct Var {
   std::string name;
-  tag_tok type;
+  llvm::Type* type;
 
-  Var(const std::string& name, zMile::tag_tok type) : name(name), type(type)
+  Var(const std::string& name, zMile::tag_tok tok) : name(name)
   {
-    if (!tok_is_type(type))
+    if (!tok_is_type(tok))
       assert(log_err<std::logic_error>("type error: invalid type assigned to the variable."));
+    type = get_type_of_tok(tok);
+  }
+
+  Var(const std::string& name, llvm::Type* type) : name(name), type(type) {  }
+
+  std::string get_type_name() const {
+    std::string str;
+    llvm::raw_string_ostream os(str);
+    type->print(os);
+    return os.str();
   }
 
   std::string to_string(bool hasType = false) const {
-    if (hasType) return map_tok[type] + " " + name;
+    if (hasType) return get_type_name() + " " + name;
     else return name;
   }
 } Argu;
@@ -178,71 +213,8 @@ inline llvm::AllocaInst* create_alloca_in_entry(
     llvm::Function *func, const Var var)
 {
   llvm::IRBuilder<> b_(&func->getEntryBlock(), func->getEntryBlock().begin());
-  return b_.CreateAlloca(get_type_of_tok(var.type), nullptr, var.name);
+  return b_.CreateAlloca(var.type, nullptr, var.name);
 }
-
-class BlockNode : public StmtNode {
-  using list_t = std::vector<stmt_t>;
-  list_t v;
-  std::vector<std::string> named_values;
-  bool rb; // require_brace
-public:
-  BlockNode(list_t v, bool rb = false) : v(std::move(v)), rb(rb) { named_values.clear(); }
-  virtual ~BlockNode() = default;
-  virtual NodeType get_type() const override { return NodeType::BlockNodeTy; }
-  virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ BlockNode, \"list\": ";
-    output_list<stmt_t>(v, [](auto& x, auto& os){ x->output(os); });
-    os << " }";
-  }
-  virtual llvm::Value* codegen() override {
-    g_bl_now.push(this);
-
-    auto func = g_builder.GetInsertBlock()->getParent();
-    auto ret_ty = func->getReturnType();
-    llvm::AllocaInst* var_ret;
-    if (rb && !ret_ty->isVoidTy())
-    {
-      g_bl_ret = llvm::BasicBlock::Create(g_context, "__return_block");
-      var_ret = 
-        create_alloca_in_entry(
-          func,   Var {
-          "__return_value",
-          find_value_type(ret_ty)
-        });
-      
-      g_named_values["__return_value"].push(var_ret);
-      named_values.push_back("__return_value");
-    }
-
-    for (auto &x:v) {
-      x->codegen();
-      if (x->get_type() == RetStmtNodeTy)
-        break; // ignore the following stmts.
-    }
-    for (auto &x:named_values) g_named_values[x].pop();
-
-    if (rb) {
-      if (ret_ty->isVoidTy())
-        g_builder.CreateRetVoid();
-      else {
-        auto& ls = func->getBasicBlockList().back().getInstList();
-        bool term = ls.empty() | !ls.back().isTerminator();
-        func->getBasicBlockList().push_back(g_bl_ret);
-        if (term) g_builder.CreateBr(g_bl_ret);
-        g_builder.SetInsertPoint(g_bl_ret);
-        g_builder.CreateRet(g_builder.CreateLoad(var_ret));
-      }
-    }
-
-    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
-  }
-  virtual std::string get_name() const override {
-    return "block";
-  }
-  auto& get_nv() { return named_values; }
-};
-using block_t = std::unique_ptr<BlockNode>;
 
 class NumExprNode : public ExprNode {
   double val;
@@ -258,6 +230,9 @@ public:
   }
   virtual std::string get_name() const override {
     return "number";
+  }
+  virtual double get_val() const {
+    return val;
   }
 };
 
@@ -313,7 +288,7 @@ public:
   }
 };
 
-class VarExprNode : public ExprNode {
+class VarExprNode : public LeftExprNode {
   std::string id;
 
 public:
@@ -324,13 +299,54 @@ public:
   }
 
   virtual llvm::Value* codegen() override {
-    llvm::Value* ptr = g_named_values[id].top();
-    if (!ptr) return log_err("unknown variable name.");
-
+    auto ptr = codegen_left();
+    if (!ptr) return nullptr;
     return g_builder.CreateLoad(ptr, id);
   }
 
+  virtual llvm::Value* codegen_left() override {
+    llvm::Value* ptr = g_named_values[id].top();
+    if (!ptr) return log_err("unknown variable name.");
+    return ptr;
+  }
+
   virtual std::string get_name() const override { return id; }
+};
+
+class SubScriptExprNode : public LeftExprNode {
+  left_t arr;
+  expr_t idx;
+public:
+  SubScriptExprNode(left_t arr, expr_t idx) : arr(std::move(arr)), idx(std::move(idx)) {  }
+  virtual NodeType get_type() const override { return NodeType::SubScriptExprNodeTy; }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ \"node type\": \"SubScriptExprNode\", \"arr\": ";
+    arr->output();
+    os << ", \"index\": ";
+    idx->output();
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    auto v = codegen_left();
+    if (!v->getType()->getPointerElementType()->isArrayTy())
+      v = g_builder.CreateLoad(v);
+    return v;
+  }
+  virtual llvm::Value* codegen_left() override {
+    auto ptr = arr->codegen_left();
+    if (!ptr) return nullptr;
+    auto pos = idx->codegen();
+    if (!pos) return nullptr;
+    
+    llvm::ArrayRef<llvm::Value*> arr_pos = {
+      llvm::ConstantInt::get(g_context, llvm::APInt(32, 0)), // dereference
+      g_builder.CreateFPToUI(pos, llvm::Type::getInt32Ty(g_context))
+    };
+    return g_builder.CreateGEP(ptr, arr_pos);
+  }
+  virtual std::string get_name() const override {
+    return "SubScript(" + arr->get_name() + ")";
+  }
 };
 
 class VarDeclNode : public DeclNode {
@@ -345,26 +361,45 @@ public:
     os << "{ \"node type\": \"VarDeclNode\", \"lst\": ";
     output_list<ele_t>(lst, [](auto& x, auto& os) {
       os << "{ \"name\": \"" << x.first.name << "\", "
-         << "\"type\": \"" << map_tok[x.first.type] << "\", "
+         << "\"type\": \"" << x.first.get_type_name() << "\", "
          << "\"init\": ";
       if (x.second) x.second->output();
       else os << "null";
       os << " }";
-    });
+    }, os);
     os << " }";
   }
   virtual llvm::Value* codegen() override {
     for (auto&& [v, init] : lst) {
       // codegen: v = init
-      auto I = init ? init->codegen() : 
-        get_default_value(v.type);
+      bool bArr = v.type->isArrayTy();
+      if (init && bArr)
+        return log_err("invalid initial value for array.");
+      auto I = init ? init->codegen() :
+                 bArr ? nullptr : get_default_value(v.type);
       if (init && !I) return nullptr;
-      auto A = g_builder.CreateAlloca(get_type_of_tok(v.type), nullptr, v.name);
-      if (I) g_builder.CreateStore(I, A);
-      // maintain the symbol table
-      g_named_values[v.name].push(A);
-      // record itself for later erasing
-      g_bl_now.top()->get_nv().push_back(v.name);
+      
+      if (g_bl_now.empty())
+      { // global
+        if (v.type->isAggregateType())
+          assert(I == nullptr); // not allowed so far
+
+        if (g_named_values.find(v.name) != g_named_values.end()
+            || !g_named_values[v.name].empty())
+          throw syntax_error("global variable name has been occupied.");
+
+        auto A = new llvm::GlobalVariable(*g_module, v.type, false,
+        llvm::Function::InternalLinkage,
+        get_default_value(v.type), v.name);
+
+        // maintain the symbol table
+        g_named_values[v.name].push(A);
+      } else { // local
+        auto A = g_builder.CreateAlloca(v.type, nullptr, v.name);
+        if (I) g_builder.CreateStore(I, A);
+        // maintain the symbol table
+        g_named_values[v.name].push(A);
+      }
     }
     return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
   }
@@ -376,6 +411,75 @@ public:
 
   list_t& get_list() { return lst; }
 };
+
+class BlockNode : public StmtNode {
+  using list_t = std::vector<stmt_t>;
+  list_t v;
+  std::vector<std::string> extra_pop;
+  bool rb; // require_brace
+public:
+  BlockNode(list_t v, bool rb = false) : v(std::move(v)), rb(rb) {  }
+  virtual ~BlockNode() = default;
+  virtual NodeType get_type() const override { return NodeType::BlockNodeTy; }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ \"node type\": \"BlockNode\", \"list\": ";
+    output_list<stmt_t>(v, [](auto& x, auto& os){ x->output(os); }, os);
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    g_bl_now.push(this);
+
+    auto func = g_builder.GetInsertBlock()->getParent();
+    auto ret_ty = func->getReturnType();
+    llvm::AllocaInst* var_ret;
+    if (rb && !ret_ty->isVoidTy())
+    {
+      g_bl_ret = llvm::BasicBlock::Create(g_context, "__return_block");
+      var_ret = 
+        create_alloca_in_entry(
+          func,   Var {
+          "__return_value",
+          get_tok_of_type(ret_ty)
+        });
+      
+      g_named_values["__return_value"].push(var_ret);
+      extra_pop.push_back("__return_value");
+    }
+
+    for (auto &x:v) {
+      x->codegen();
+      if (x->get_type() == RetStmtNodeTy)
+        break; // ignore the following stmts.
+    }
+
+    for (auto &x:v) if (x->get_type() == VarDeclNodeTy)
+      for (auto &[var, init] : dynamic_cast<VarDeclNode*>(x.get())->get_list())
+        g_named_values[var.name].pop();
+    for (auto &x:extra_pop) g_named_values[x].pop();
+
+    if (rb) {
+      if (ret_ty->isVoidTy())
+        g_builder.CreateRetVoid();
+      else {
+        auto& ls = func->getBasicBlockList().back().getInstList();
+        bool term = ls.empty() | !ls.back().isTerminator();
+        func->getBasicBlockList().push_back(g_bl_ret);
+        if (term) g_builder.CreateBr(g_bl_ret);
+        g_builder.SetInsertPoint(g_bl_ret);
+        g_builder.CreateRet(g_builder.CreateLoad(var_ret));
+      }
+    }
+
+    g_bl_now.pop();
+
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+  }
+  virtual std::string get_name() const override {
+    return "block";
+  }
+  auto& get_extra_pop() { return extra_pop; }
+};
+using block_t = std::unique_ptr<BlockNode>;
 
 class BinExprNode : public ExprNode {
   char op;
@@ -401,7 +505,7 @@ public:
     if (op == '=') {
       auto R = right->codegen();
 
-      auto L = g_named_values[dynamic_cast<VarExprNode*>(left.get())->get_name()].top();
+      auto L = dynamic_cast<ILeftValue*>(left.get())->codegen_left();
       if (!L || !R) return nullptr;
       g_builder.CreateStore(R, L);
       // the value of assignment is rhs
@@ -454,7 +558,7 @@ public:
 
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node type\": \"CallExpr\", \"func_name\": \"" << func << "\", \"args\": ";
-    output_list<expr_t>(args, [](auto &x, auto &os){ x->output(os); });
+    output_list<expr_t>(args, [](auto &x, auto &os){ x->output(os); }, os);
     os << " }";
   }
 
@@ -675,7 +779,7 @@ public:
        << ", \"type\": \"" << map_tok[type] << "\"";
     if (args.size()) {
       os << ", \"args\": ";
-      output_list<Argu>(args, [](auto &x, auto &os){ os << '"' << x.to_string(true) << '"'; });
+      output_list<Argu>(args, [](auto &x, auto &os){ os << '"' << x.to_string(true) << '"'; }, os);
     }
     os << " }";
   }
@@ -683,7 +787,7 @@ public:
   virtual llvm::Value* codegen() override {
     std::vector<llvm::Type*> vArgsTy;
     for (const auto& x:args)
-      vArgsTy.push_back(get_type_of_tok(x.type));
+      vArgsTy.push_back(x.type);
     
     auto l_func_ty = llvm::FunctionType::get(get_type_of_tok(type), vArgsTy, var_args);
     auto l_func = llvm::Function::Create(l_func_ty, llvm::Function::ExternalLinkage, id, g_module.get());
@@ -703,7 +807,7 @@ public:
 
 using proto_t = std::unique_ptr<ProtoNode>;
 
-class FuncNode : public Node {
+class FuncNode : public LeftExprNode {
   proto_t proto;
   block_t body; // what it will be calculated.
 public:
@@ -737,9 +841,9 @@ public:
     g_builder.SetInsertPoint(bas_blo);
 
     for (auto& arg: fun->args()) {
-      body->get_nv().push_back(arg.getName());
+      body->get_extra_pop().push_back(arg.getName());
       auto alloca = create_alloca_in_entry(
-          fun, Var { arg.getName(), find_value_type(arg.getType()) });
+          fun, Var { arg.getName(), get_tok_of_type(arg.getType()) });
       g_builder.CreateStore(&arg, alloca);
       g_named_values[arg.getName()].push(alloca);
     }
@@ -753,6 +857,12 @@ public:
     }
     fun->eraseFromParent();
     return nullptr;
+  }
+
+  virtual llvm::Value* codegen_left() override {
+    auto fun = get_func(proto->get_name());
+    if (!fun) return log_err("unknown function name!");
+    return fun;
   }
 
   virtual std::string get_name() const override { return proto->get_name(); }
@@ -775,24 +885,38 @@ class AddressExprNode : public ExprNode {
   expr_t operand;
 public:
   AddressExprNode(expr_t operand) : operand(std::move(operand)) {  }
-  virtual NodeType get_type() const override { return NodeType::VarExprNodeTy; }
+  virtual NodeType get_type() const override { return NodeType::AddressExprNodeTy; }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"VarExpr\", \"operand\": \"";
-    if (operand->get_type() == VarExprNodeTy)
-      os << ((VarExprNode*)(operand.get()))->get_name();
-    else os << ((FuncNode*)(operand.get()))->get_name();
+    os << "{ \"node type\": \"AddressExpr\", \"operand\": \"";
+    if (operand->get_type() == FuncNodeTy)
+      os << operand->get_name();
+    else operand->output(os);
     os << "\" }";
   }
 
   virtual llvm::Value* codegen() override {
-    if (operand->get_type() == VarExprNodeTy)
-      return g_named_values[get_name()].top();
-    else return get_func(get_name());
+    return dynamic_cast<ILeftValue*>(operand.get())->codegen_left();
   }
   virtual std::string get_name() const override {
-    if (operand->get_type() == VarExprNodeTy)
-      return ((VarExprNode*)(operand.get()))->get_name();
-    else return ((FuncNode*)(operand.get()))->get_name();
+    return operand->get_name();
+  }
+};
+
+class DisAddrExprNode : public ExprNode {
+  expr_t operand;
+public:
+  DisAddrExprNode(expr_t operand) : operand(std::move(operand)) {  }
+  virtual NodeType get_type() const override { return NodeType::DisAddrExprNodeTy; }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ \"node type\": \"DisAddressExpr\", \"operand\": ";
+    operand->output();
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    return g_builder.CreateLoad(operand->codegen());
+  }
+  virtual std::string get_name() const override {
+    return "DisAddr(" + operand->get_name() + ")";
   }
 };
 
