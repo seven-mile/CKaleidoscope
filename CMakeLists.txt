@@ -7,6 +7,8 @@ enable_testing()
 add_test(compl CKaleidoscope ../test/1/input.in)
 add_test(compl CKaleidoscope ../test/2/input.in)
 add_test(compl CKaleidoscope ../test/3/input.in)
+add_test(compl CKaleidoscope ../test/4/input.in)
+add_test(compl CKaleidoscope ../test/5/input.in)
 add_test(compl CKaleidoscope ../test/more/input.in)
 
 set(CMAKE_CXX_STANDARD 17)

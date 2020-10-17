@@ -1,27 +1,25 @@
-# temp test
+# TODO: need array type
 
-number x, y;
+number f[101], cnt;
 
-extern number printf(...);
+extern number printf(string fmt, ...);
 
-def number gox() {
-  x = x * 5;
-  return x;
-}
-
-def number goy() {
-  y = y / 5;
-  return y;
+def number fib(number n) {
+  # memorized
+  if (f[n]) return f[n];
+  if (n <= 2) return 1;
+  else {
+    cnt = cnt + 1;
+    return f[n] = fib(n-1) + fib(n-2);
+  }
 }
 
 def number main() {
-  x = 1; y = 99;
-
-  for (number i=1; i<=7; i=i+1) {
-    gox();
-    goy();
-    printf("%.0f: %f %f\n", i, x, y);
-  }
+  printf("hello!!! I'm fine...\n");
+  for (number i=1; i<=7; i=i+1)
+    printf("fib(%.0f) = %f\n", i, fib(i));
+    
+  printf("cnt = %f!", cnt);
 
   return 0;
 }

@@ -1,3 +1,5 @@
+# unusable for a while
+
 extern number scanf(string fmt, ...);
 extern number printf(string fmt, ...);
 extern number freopen_in(string file);

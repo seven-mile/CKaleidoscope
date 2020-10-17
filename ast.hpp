@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <any>
+#include <bits/stdint-intn.h>
 #include <cassert>
 #include <cstddef>
 #include <iostream>
@@ -31,6 +33,7 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include "anyex.hpp"
 #include "errdef.hpp"
 #include "global.hpp"
 #include "lexer.hpp"
@@ -72,6 +75,7 @@ inline llvm::Constant* get_default_value(tag_tok t) {
   static llvm::Constant
     *bl = llvm::ConstantInt::get(g_context, llvm::APInt(1, 0)),
     *ch = llvm::ConstantInt::get(g_context, llvm::APInt(8, 0)),
+    *it = llvm::ConstantInt::get(g_context, llvm::APInt(32, 0)),
     *st = llvm::ConstantPointerNull::get(llvm::Type::getInt8PtrTy(g_context)),
     *db = llvm::ConstantFP::get(g_context, llvm::APFloat(.0));
 
@@ -84,6 +88,8 @@ inline llvm::Constant* get_default_value(tag_tok t) {
     return st;
   case tok_kw_number:
     return db;
+  case tok_kw_int:
+    return it;
   default:
     return log_err<std::logic_error>("no default value found!");
   }
@@ -105,25 +111,15 @@ inline llvm::AllocaInst* create_alloca_in_entry(
 // AST Node
 // =========================
 
-enum NodeType : int {
-  BlockNodeTy,
-  NumExprNodeTy,
-  CharExprNodeTy,
-  StringExprNodeTy,
-  BoolExprNodeTy,
-  VarExprNodeTy,
-  SubScriptExprNodeTy,
-  VarDeclNodeTy,
-  BinExprNodeTy,
-  CallExprNodeTy,
-  IfStmtNodeTy,
-  ForStmtNodeTy,
-  RetStmtNodeTy,
-  ProtoNodeTy,
-  FuncNodeTy,
-  AddressExprNodeTy,
-  DisAddrExprNodeTy
-};
+using ty = llvm::Type;
+inline uint get_type_prec(ty* t) {
+  switch (t->getTypeID()) {
+  case ty::DoubleTyID: return 0x3f3f3f3fu;
+  case ty::IntegerTyID: return t->getIntegerBitWidth();
+  case ty::PointerTyID: return t->getIntegerBitWidth(); // hey?
+  default: return (log_err<std::logic_error>("cannot determine the type precedence."), 0);
+  }
+}
 
 class IOutputable {
 public:
@@ -147,7 +143,7 @@ public:
 
 class IHasType {
 public:
-  virtual NodeType get_type() const = 0;
+  virtual llvm::Type* get_type() const = 0;
   virtual std::string_view get_type_str() const {
     return "";// magic_enum::enum_name(get_type());
   }
@@ -157,7 +153,7 @@ class Node : public IOutputable, public IValueGenable, public IHasType, public I
 public:
   virtual ~Node() = default;
   virtual llvm::Value* codegen() override = 0;
-  virtual NodeType get_type() const override = 0;
+  virtual llvm::Type* get_type() const override = 0;
   virtual bool is_left() { return false; }
 };
 
@@ -216,22 +212,48 @@ inline llvm::AllocaInst* create_alloca_in_entry(
   return b_.CreateAlloca(var.type, nullptr, var.name);
 }
 
-class NumExprNode : public ExprNode {
-  double val;
-
+class NullStmt : public StmtNode {
 public:
-  NumExprNode(double val) : val(val) {  }
-  virtual NodeType get_type() const override { return NodeType::NumExprNodeTy; }
+  NullStmt() {  }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"NumExpr\", \"val\": " << val << " }";
+    os << "{ \"node_type\": \"NullStmt\" }";
   }
   virtual llvm::Value* codegen() override {
-    return llvm::ConstantFP::get(g_context, llvm::APFloat(val));
+    return llvm::UndefValue::get(get_type());
+  }
+  virtual std::string get_name() const override {
+    return "null";
+  }
+};
+
+class NumExprNode : public ExprNode {
+  std::any val;
+
+public:
+  NumExprNode(std::any val) : val(val) {  }
+  virtual llvm::Type* get_type() const override {
+    return val.type() == typeid(int) ? ty::getInt32Ty(g_context) : ty::getDoubleTy(g_context);
+  }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ \"node_type\": \"NumExpr\", \"val\": ";
+    print_any(val);
+    os << ", \"val_type\": \"" << (val.type() == typeid(int) ? "int" : "double") << "\"";
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    if (val.type() == typeid(double))
+      return llvm::ConstantFP::get(g_context, llvm::APFloat(std::any_cast<double>(val)));
+    if (val.type() == typeid(int))
+      return llvm::ConstantInt::get(g_context, llvm::APInt(32, std::any_cast<int>(val)));
+    if (val.type() == typeid(int64_t))
+      return llvm::ConstantInt::get(g_context, llvm::APInt(64, std::any_cast<int64_t>(val)));
+    return log_err<std::invalid_argument>("invalid val type.");
   }
   virtual std::string get_name() const override {
     return "number";
   }
-  virtual double get_val() const {
+  virtual std::any get_val() const {
     return val;
   }
 };
@@ -241,9 +263,9 @@ class CharExprNode : public ExprNode {
 
 public:
   CharExprNode(char val) : val(val) {  }
-  virtual NodeType get_type() const override { return NodeType::CharExprNodeTy; }
+  virtual llvm::Type* get_type() const override { return ty::getInt8Ty(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"CharExpr\", \"val\": '" << val << "' }";
+    os << "{ \"node_type\": \"CharExpr\", \"val\": '" << val << "' }";
   }
   virtual llvm::Value* codegen() override {
     return llvm::ConstantInt::get(g_context, llvm::APInt(/* nBits: */8, val));
@@ -258,10 +280,10 @@ class StringExprNode : public ExprNode {
 
 public:
   StringExprNode(const std::string& val) : val(val) {  }
-  virtual NodeType get_type() const override { return NodeType::StringExprNodeTy; }
+  virtual llvm::Type* get_type() const override { return llvm::ArrayType::get(ty::getInt8Ty(g_context), val.size()); }
   virtual void output(std::ostream & os = std::cerr) override {
     // we need to display raw string
-    os << "{ \"node type\": \"StringExpr\", \"val\": \"" << get_raw_string(val) << "\" }";
+    os << "{ \"node_type\": \"StringExpr\", \"val\": \"" << get_raw_string(val) << "\" }";
   }
   virtual llvm::Value* codegen() override {
     return g_builder.CreateGlobalStringPtr(val);
@@ -276,9 +298,9 @@ class BoolExprNode : public ExprNode {
 
 public:
   BoolExprNode(bool val) : val(val) {  }
-  virtual NodeType get_type() const override { return NodeType::BoolExprNodeTy; }
+  virtual llvm::Type* get_type() const override { return ty::getInt1Ty(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"BoolExpr\", \"val\": " << (val ? "true" : "false") << " }";
+    os << "{ \"node_type\": \"BoolExpr\", \"val\": " << (val ? "true" : "false") << " }";
   }
   virtual llvm::Value* codegen() override {
     return llvm::ConstantInt::get(g_context, llvm::APInt(1, val));
@@ -293,9 +315,13 @@ class VarExprNode : public LeftExprNode {
 
 public:
   VarExprNode(const std::string &id) : id(id) {  }
-  virtual NodeType get_type() const override { return NodeType::VarExprNodeTy; }
+  virtual llvm::Type* get_type() const override {
+    auto tt = g_named_values[id].top()->getType();
+    assert(tt->isPointerTy());
+    return tt->isPointerTy() ? tt->getPointerElementType() : tt;
+  }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"VarExpr\", \"id\": \"" << id << "\" }";
+    os << "{ \"node_type\": \"VarExpr\", \"id\": \"" << id << "\" }";
   }
 
   virtual llvm::Value* codegen() override {
@@ -318,9 +344,9 @@ class SubScriptExprNode : public LeftExprNode {
   expr_t idx;
 public:
   SubScriptExprNode(left_t arr, expr_t idx) : arr(std::move(arr)), idx(std::move(idx)) {  }
-  virtual NodeType get_type() const override { return NodeType::SubScriptExprNodeTy; }
+  virtual llvm::Type* get_type() const override { return arr->get_type()->getArrayElementType(); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"SubScriptExprNode\", \"arr\": ";
+    os << "{ \"node_type\": \"SubScriptExprNode\", \"arr\": ";
     arr->output();
     os << ", \"index\": ";
     idx->output();
@@ -356,9 +382,9 @@ class VarDeclNode : public DeclNode {
 
 public:
   VarDeclNode(list_t& lst) : lst(std::move(lst)) {  }
-  virtual NodeType get_type() const override { return NodeType::VarDeclNodeTy; }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"VarDeclNode\", \"lst\": ";
+    os << "{ \"node_type\": \"VarDeclNode\", \"lst\": ";
     output_list<ele_t>(lst, [](auto& x, auto& os) {
       os << "{ \"name\": \"" << x.first.name << "\", "
          << "\"type\": \"" << x.first.get_type_name() << "\", "
@@ -378,6 +404,11 @@ public:
       auto I = init ? init->codegen() :
                  bArr ? nullptr : get_default_value(v.type);
       if (init && !I) return nullptr;
+
+      auto p1 = get_type_prec(I->getType()), p2 = get_type_prec(v.type);
+      if (p1 > p2) return log_err("the initial value type is not capable for the variable.");
+      if (I->getType()->isIntegerTy() && v.type->isDoubleTy())
+        I = g_builder.CreateSIToFP(I, v.type);
       
       if (g_bl_now.empty())
       { // global
@@ -412,6 +443,208 @@ public:
   list_t& get_list() { return lst; }
 };
 
+class BinExprNode : public ExprNode {
+  char op;
+  expr_t left, right;
+
+public:
+  BinExprNode(char op, expr_t left,
+    expr_t right) : op(op),
+    left(std::move(left)), right(std::move(right)) {  }
+
+  llvm::Type* get_max_type() const {
+    auto lp = get_type_prec(left->get_type()), rp = get_type_prec(right->get_type());
+    // auto &refa = (lp <= rp ? left : right), &refb = (lp <= rp ? right : left);
+    return lp >= rp ? left->get_type() : right->get_type();
+  }
+  
+  virtual llvm::Type* get_type() const override {
+    if (abs(op) == '>' || abs(op) == '<')
+      return ty::getInt1Ty(g_context);
+    return get_max_type();
+  }
+
+  virtual void output(std::ostream & os = std::cerr) override {
+    std::string op_display;
+    if (op < 0) op_display = -op, op_display += '=';
+    else op_display = op;
+    os << "{ \"node_type\": \"BinExpr\", \"operator\": \"" << op_display << "\", \"left\": ";
+    left->output();
+    os << ", \"right\": ";
+    right->output();
+    os << " }";
+  }
+
+  virtual llvm::Value* codegen() override {
+    output();
+    std::cerr << std::endl;
+    // special for assignment
+    if (op == '=') {
+      auto p1 = get_type_prec(left->get_type()), p2 = get_type_prec(right->get_type());
+      if (p1 < p2) return log_err("invalid assignment!");
+
+      auto R = right->codegen();
+
+      auto L = dynamic_cast<ILeftValue*>(left.get())->codegen_left();
+
+      if (!L || !R) return nullptr;
+
+      if (left->get_type()->isDoubleTy() && right->get_type()->isIntegerTy())
+        R = g_builder.CreateSIToFP(R, left->get_type());
+
+      g_builder.CreateStore(R, L);
+      // the value of assignment is rhs
+      return R;
+    }
+
+    auto L = left->codegen(), R = right->codegen();
+    if (!L || !R) return nullptr;
+
+    auto res_ty = ((get_type_prec(L->getType()) > get_type_prec(R->getType()) ? L->getType() : R->getType()));
+    // get_type();
+    
+    if (res_ty->isDoubleTy()) {
+      if (L->getType()->isIntegerTy())
+        L = g_builder.CreateSIToFP(L, res_ty);
+      if (R->getType()->isIntegerTy())
+        R = g_builder.CreateSIToFP(R, res_ty);
+      switch (op)
+      {
+      case '+':
+        return g_builder.CreateFAdd(L, R, "add");
+      case '-':
+        return g_builder.CreateFSub(L, R, "sub");
+      case '*':
+        return g_builder.CreateFMul(L, R, "mul");
+      case '/':
+        return g_builder.CreateFDiv(L, R, "div");
+      case '%':
+        return g_builder.CreateFRem(L, R, "mod");
+      case '<':
+        return g_builder.CreateFCmpULT(L, R, "lt");
+      case '>':
+        return g_builder.CreateFCmpUGT(L, R, "gt");
+      case -'<':
+        return g_builder.CreateFCmpULE(L, R, "le");
+      case -'>':
+        return g_builder.CreateFCmpUGE(L, R, "ge");
+      default: break;
+      }
+    } else if (res_ty->isIntegerTy()) {
+      // L = g_builder.CreateIntCast(L, res_ty, true);
+      // R = g_builder.CreateIntCast(R, res_ty, true);
+      
+      switch (op)
+      {
+      case '+':
+        return g_builder.CreateAdd(L, R, "add");
+      case '-':
+        return g_builder.CreateSub(L, R, "sub");
+      case '*':
+        return g_builder.CreateMul(L, R, "mul");
+      case '/':
+        return g_builder.CreateSDiv(L, R, "div");
+      case '%':
+        return g_builder.CreateSRem(L, R, "mod");
+      case '<':
+        return g_builder.CreateICmpULT(L, R, "lt");
+      case '>':
+        return g_builder.CreateICmpUGT(L, R, "gt");
+      case -'<':
+        return g_builder.CreateICmpULE(L, R, "le");
+      case -'>':
+        return g_builder.CreateICmpUGE(L, R, "ge");
+      default: break;
+      }
+    }
+
+    return log_err("invalid binary operator.");
+  }
+
+  virtual std::string get_name() const override {
+    return "binop";
+  }
+};
+
+class CallExprNode : public ExprNode {
+  std::string func;
+  std::vector<expr_t> args;
+
+public:
+  CallExprNode(const std::string &func, std::vector<expr_t> args)
+    : func(func), args(std::move(args)) {  }
+
+  virtual llvm::Type* get_type() const override { return get_func(func)->getReturnType(); }
+
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ \"node_type\": \"CallExpr\", \"func_name\": \"" << func << "\", \"args\": ";
+    output_list<expr_t>(args, [](auto &x, auto &os){ x->output(os); }, os);
+    os << " }";
+  }
+
+  virtual llvm::Value* codegen() override {
+    llvm::Function *l_func = get_func(func);
+    if (!l_func) return log_err("unknown function reference.");
+    
+    if ((l_func->isVarArg() && args.size() < l_func->arg_size()) ||
+         (!l_func->isVarArg() && args.size() != l_func->arg_size()))
+            return log_err("incorrect # arguments passed.");
+
+    std::vector<llvm::Value*> lv_args;
+    auto it = l_func->arg_begin();
+    for (size_t i = 0, e = args.size(); i != e; i++) {
+      auto V = args[i]->codegen();
+      if (!V) return nullptr;
+      if (!l_func->isVarArg()) {
+        auto p1 = get_type_prec(V->getType()), p2 = get_type_prec(it->getType());
+        if (p1 > p2) return log_err("the param value type is not capable for the argument.");
+        if (V->getType()->isIntegerTy() && it->getType()->isDoubleTy())
+          V = g_builder.CreateSIToFP(V, it->getType());
+        it++;
+      }
+      lv_args.push_back(V);
+    }
+
+    return g_builder.CreateCall(l_func, lv_args, "call");
+  }
+
+  virtual std::string get_name() const override {
+    return func;
+  }
+};
+
+class RetStmtNode : public StmtNode {
+  expr_t val;
+public:
+  RetStmtNode(expr_t val) : val(std::move(val)) {  }
+
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ \"node_type\": \"RetStmt\", \"val\": ";
+    val->output();
+    os << " }";
+  }
+
+  virtual llvm::Value* codegen() override {
+    auto V = val->codegen();
+    if (!V) return nullptr;
+
+    auto ret_ty = g_builder.getCurrentFunctionReturnType();
+    auto p1 = get_type_prec(val->get_type()), p2 = get_type_prec(ret_ty);
+    if (p1 > p2) return log_err("return value type is not capable for the function.");
+    if (ret_ty->isDoubleTy() && val->get_type()->isIntegerTy())
+      V = g_builder.CreateSIToFP(V, ret_ty);
+
+    g_builder.CreateStore(V, g_named_values["__return_value"].top());
+    return g_builder.CreateBr(g_bl_ret);
+  }
+
+  virtual std::string get_name() const override {
+    return val->get_name();
+  }
+};
+
 class BlockNode : public StmtNode {
   using list_t = std::vector<stmt_t>;
   list_t v;
@@ -420,9 +653,9 @@ class BlockNode : public StmtNode {
 public:
   BlockNode(list_t v, bool rb = false) : v(std::move(v)), rb(rb) {  }
   virtual ~BlockNode() = default;
-  virtual NodeType get_type() const override { return NodeType::BlockNodeTy; }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"BlockNode\", \"list\": ";
+    os << "{ \"node_type\": \"BlockNode\", \"list\": ";
     output_list<stmt_t>(v, [](auto& x, auto& os){ x->output(os); }, os);
     os << " }";
   }
@@ -448,11 +681,11 @@ public:
 
     for (auto &x:v) {
       x->codegen();
-      if (x->get_type() == RetStmtNodeTy)
+      if (instof<RetStmtNode>(*x))
         break; // ignore the following stmts.
     }
 
-    for (auto &x:v) if (x->get_type() == VarDeclNodeTy)
+    for (auto &x:v) if (instof<VarDeclNode>(*x))
       for (auto &[var, init] : dynamic_cast<VarDeclNode*>(x.get())->get_list())
         g_named_values[var.name].pop();
     for (auto &x:extra_pop) g_named_values[x].pop();
@@ -479,110 +712,8 @@ public:
   }
   auto& get_extra_pop() { return extra_pop; }
 };
-using block_t = std::unique_ptr<BlockNode>;
 
-class BinExprNode : public ExprNode {
-  char op;
-  expr_t left, right;
-
-public:
-  BinExprNode(char op, expr_t left,
-    expr_t right) : op(op),
-    left(std::move(left)), right(std::move(right)) {  }
-  
-  virtual NodeType get_type() const override { return NodeType::BinExprNodeTy; }
-
-  virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"BinExpr\", \"operator\": '" << op << "', \"left\": ";
-    left->output();
-    os << ", \"right\": ";
-    right->output();
-    os << " }";
-  }
-
-  virtual llvm::Value* codegen() override {
-    // special for assignment
-    if (op == '=') {
-      auto R = right->codegen();
-
-      auto L = dynamic_cast<ILeftValue*>(left.get())->codegen_left();
-      if (!L || !R) return nullptr;
-      g_builder.CreateStore(R, L);
-      // the value of assignment is rhs
-      return R;
-    }
-
-    auto L = left->codegen(), R = right->codegen();
-    if (!L || !R) return nullptr;
-    
-    switch (op)
-    {
-    case '+':
-      return g_builder.CreateFAdd(L, R, "add");
-    case '-':
-      return g_builder.CreateFSub(L, R, "sub");
-    case '*':
-      return g_builder.CreateFMul(L, R, "mul");
-    case '/':
-      return g_builder.CreateFDiv(L, R, "div");
-    case '%':
-      return g_builder.CreateFRem(L, R, "mod");
-    case '<':
-      return g_builder.CreateFCmpULT(L, R, "lt");
-    case '>':
-      return g_builder.CreateFCmpUGT(L, R, "gt");
-    case -'<':
-      return g_builder.CreateFCmpULE(L, R, "le");
-    case -'>':
-      return g_builder.CreateFCmpUGE(L, R, "ge");
-    default:
-      return log_err("invalid binary operator.");
-      break;
-    }
-  }
-
-  virtual std::string get_name() const override {
-    return "binop";
-  }
-};
-
-class CallExprNode : public ExprNode {
-  std::string func;
-  std::vector<expr_t> args;
-
-public:
-  CallExprNode(const std::string &func, std::vector<expr_t> args)
-    : func(func), args(std::move(args)) {  }
-
-  virtual NodeType get_type() const override { return NodeType::CallExprNodeTy; }
-
-  virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"CallExpr\", \"func_name\": \"" << func << "\", \"args\": ";
-    output_list<expr_t>(args, [](auto &x, auto &os){ x->output(os); }, os);
-    os << " }";
-  }
-
-  virtual llvm::Value* codegen() override {
-    llvm::Function *l_func = get_func(func);
-    if (!l_func) return log_err("unknown function reference.");
-    
-    if ((l_func->isVarArg() && args.size() < l_func->arg_size()) ||
-         (!l_func->isVarArg() && args.size() != l_func->arg_size()))
-            return log_err("incorrect # arguments passed.");
-
-    std::vector<llvm::Value*> lv_args;
-    for (size_t i = 0, e = args.size(); i != e; i++) {
-      lv_args.push_back(args[i]->codegen());
-      if (!lv_args.back()) return nullptr;
-    }
-
-    return g_builder.CreateCall(l_func, lv_args, "call");
-  }
-
-  virtual std::string get_name() const override {
-    return func;
-  }
-};
+using block_t = std::unique_ptr<class BlockNode>;
 
 class IfStmtNode : public StmtNode {
   expr_t cond;
@@ -592,10 +723,10 @@ public:
   IfStmtNode(expr_t cond, block_t then, block_t els)
     : cond(std::move(cond)), then(std::move(then)), els(std::move(els)) {  }
 
-  virtual NodeType get_type() const override { return NodeType::IfStmtNodeTy; }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"IfStmt\", \"cond\": ";
+    os << "{ \"node_type\": \"IfStmt\", \"cond\": ";
     cond->output();
     os << ", \"then\": ";
     then->output();
@@ -670,10 +801,10 @@ public:
     start(std::move(start)), every(std::move(every)),
     cond(std::move(cond)), body(std::move(body)) {  }
   
-  virtual NodeType get_type() const override { return NodeType::ForStmtNodeTy; }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"ForStmt\", \"start\": ";
+    os << "{ \"node_type\": \"ForStmt\", \"start\": ";
     start->output();
     os << ", \"cond\": ";
     cond->output();
@@ -723,7 +854,7 @@ public:
 
     g_builder.SetInsertPoint(bl_after);
     
-    if (start->get_type() == NodeType::VarDeclNodeTy) {
+    if (instof<VarDeclNode>(*start)) {
       auto& lst = ((VarDeclNode*)start.get())->get_list();
       for (auto&& [var, t] : lst)
         g_named_values[var.name].pop();
@@ -734,29 +865,6 @@ public:
 
   virtual std::string get_name() const override {
     return "for";
-  }
-};
-
-class RetStmtNode : public StmtNode {
-  expr_t val;
-public:
-  RetStmtNode(expr_t val) : val(std::move(val)) {  }
-
-  virtual NodeType get_type() const override { return NodeType::RetStmtNodeTy; }
-
-  virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"RetStmt\", \"val\": ";
-    val->output();
-    os << " }";
-  }
-
-  virtual llvm::Value* codegen() override {
-    g_builder.CreateStore(val->codegen(), g_named_values["__return_value"].top());
-    return g_builder.CreateBr(g_bl_ret);
-  }
-
-  virtual std::string get_name() const override {
-    return val->get_name();
   }
 };
 
@@ -771,11 +879,11 @@ public:
   ProtoNode(std::string id, tag_tok type, std::vector<Argu> args, bool var_args)
     : id(id), type(type), args(std::move(args)), var_args(var_args) {  }
   
-  virtual NodeType get_type() const override { return NodeType::ProtoNodeTy; }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
 
   // { Prototype, "id": "cos", "type": "number", "args": ["number theta"] }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"Prototype\", \"id\": \"" << id << "\""
+    os << "{ \"node_type\": \"Prototype\", \"id\": \"" << id << "\""
        << ", \"type\": \"" << map_tok[type] << "\"";
     if (args.size()) {
       os << ", \"args\": ";
@@ -815,11 +923,11 @@ public:
     block_t body) : proto(std::move(proto)),
       body(std::move(body)) {  }
 
-  virtual NodeType get_type() const override { return NodeType::FuncNodeTy; }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
 
   // { Function, { Prototype, $...$ }, { Body, "..." } }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"Function\", \"prototype\": ";
+    os << "{ \"node_type\": \"Function\", \"prototype\": ";
     proto->output(os);
     os << ", \"body\": ";
     body->output();
@@ -885,10 +993,10 @@ class AddressExprNode : public ExprNode {
   expr_t operand;
 public:
   AddressExprNode(expr_t operand) : operand(std::move(operand)) {  }
-  virtual NodeType get_type() const override { return NodeType::AddressExprNodeTy; }
+  virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerTo(); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"AddressExpr\", \"operand\": \"";
-    if (operand->get_type() == FuncNodeTy)
+    os << "{ \"node_type\": \"AddressExpr\", \"operand\": \"";
+    if (instof<FuncNode>(*operand))
       os << operand->get_name();
     else operand->output(os);
     os << "\" }";
@@ -906,9 +1014,9 @@ class DisAddrExprNode : public ExprNode {
   expr_t operand;
 public:
   DisAddrExprNode(expr_t operand) : operand(std::move(operand)) {  }
-  virtual NodeType get_type() const override { return NodeType::DisAddrExprNodeTy; }
+  virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerElementType(); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node type\": \"DisAddressExpr\", \"operand\": ";
+    os << "{ \"node_type\": \"DisAddressExpr\", \"operand\": ";
     operand->output();
     os << " }";
   }

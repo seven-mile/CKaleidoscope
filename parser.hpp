@@ -47,8 +47,7 @@ public:
   Parser(Lexer& lex) : lex(lex) {  }
 
   node_t parse_num() {
-    node_t ptr = std::make_unique<NumExprNode>(
-      std::any_cast<double>(cur_tok.val));
+    node_t ptr = std::make_unique<NumExprNode>(cur_tok.val);
     return adv(), std::move(ptr);
   }
 
@@ -135,6 +134,8 @@ public:
   }
 
   node_t parse_prim(bool hasSign = false) {
+    if (cur_tok.is_tool(';'))
+      return std::make_unique<NullStmt>();
     if (cur_tok.type == tok_id)
       return parse_id();
     if (cur_tok.type == tok_lit_num)
@@ -390,7 +391,10 @@ public:
         auto sz = parse_num();
         if (!sz || !cur_tok.is_tool(']'))
           return log_err("the array size is not literal integer.");
-        szs.push(round(dynamic_cast<NumExprNode*>(sz.get())->get_val()));
+        auto ss = dynamic_cast<NumExprNode*>(sz.get())->get_val();
+        if (ss.type() != typeid(int))
+          return log_err("invalid subscript, expected constant integer.");
+        szs.push(std::any_cast<int>(ss));
         adv(); // ']'
       }
 
@@ -445,9 +449,8 @@ public:
   stmt_t parse_stmt() {
     stmt_t s = parse_expr();
     // stmt must end with token ';'
-    if (cur_tok.type == tok_other
-      && cur_tok.is_tool(';'))
-      adv();
+    if (cur_tok.is_tool(';')) adv();
+
     return s;
   }
   

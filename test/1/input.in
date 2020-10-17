@@ -1,32 +1,19 @@
+extern int printf(...);
 # from cmath
 extern number tgamma(number x);
 extern number lgamma(number x);
-
-# from STD_LIB
-extern number print(string str);
-extern number printd(number val);
 
 def number gamma(number x, bool log) {
   if (log) return lgamma(x);
   else return tgamma(x);
 }
 
-def number main() {
-  for (number i = 1; i < 6; i = i + 1) {
-    print("tgamma(");
-    printd(i);
-    print(") = ");
-    printd(gamma(i, false));
-    print("\n");
-  }
+def int main() {
+  for (int i = 1; i < 6; i = i + 1)
+    printf("tgamma(%d) = %f\n", i, gamma(i, false));
 
-  for (number i = 1; i < 6; i = i + 1) {
-    print("lgamma(");
-    printd(i);
-    print(") = ");
-    printd(gamma(i, true));
-    print("\n");
-  }
+  for (int i = 1; i < 6; i = i + 1)
+    printf("lgamma(%d) = %f\n", i, gamma(i, true));
 
   return 0;
 }

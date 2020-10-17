@@ -26,12 +26,13 @@ to [create an issue](https://github.com/seven-mile/CKaleidoscope/issues/new).
 - [x] For statement
 - [ ] Switch statement
 - [x] Return statement
-- [ ] Pointers (such as &,* operator)
+- [x] Pointers (such as &,* operator)
 - [ ] Full number types
-- [ ] Array type
+- [x] Array type
 - [ ] Function (pointer) type
 - [ ] DWARF support ☆ Source-level debug
 - [ ] Compile into executable file,
+- [ ] Structure / class
 
 ---
 

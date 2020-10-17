@@ -1,25 +1,42 @@
-# TODO: need array type
+extern int printf(...);
+extern int scanf(...);
 
-number f[101], cnt;
+int M;
+int fac[1001], ifac[1001];
 
-extern number printf(string fmt, ...);
-
-def number fib(number n) {
-  # memorized
-  if (f[n]) return f[n];
-  if (n <= 2) return 1;
-  else {
-    cnt = cnt + 1;
-    return f[n] = fib(n-1) + fib(n-2);
-  }
+def int rd() {
+  int tmp;
+  scanf("%d", &tmp);
+  return tmp;
 }
 
-def number main() {
-  printf("hello!!! I'm fine...\n");
-  for (number i=1; i<=7; i=i+1)
-    printf("fib(%.0f) = %f\n", i, fib(i));
-    
-  printf("cnt = %f! amazing..(hahaha)", cnt);
+def int qpow(int a, int b) {
+  int r = 1;
+  for (; b > 0; b = b / 2) {
+    if (b % 2 > 0) r = r * a % M;
+    a = a * a % M;
+  }
+  return r;
+}
+
+def int main() {
+  # test double + int
+  printf("sum = %f\n", 1 + 0.1);
+
+  # set mod ...
+  M = 1579;
+  fac[0] = 1;
+  fac[1] = 1;
+  ifac[0] = 1;
+
+  for (int i=2; i<=1000; i=i+1)
+    fac[i] = fac[i-1] * i % M;
+  ifac[1000] = qpow(fac[1000], M-2);
+  for (int i=1000-1; i>0; i=i-1)
+    ifac[i] = ifac[i+1] * (i+1) % M;
+  
+  for (int i=1; i<=30; i=i+1)
+    printf("%d * %d = %d\n", fac[i], ifac[i], fac[i]*ifac[i]%M);
 
   return 0;
 }

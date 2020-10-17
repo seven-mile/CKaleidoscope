@@ -35,7 +35,7 @@ def number asr3(number a,number b,number eps) {
 # ln x = int_1^x 1/x dx
 def number my_log(number x) {
   printf("my_log\n");
-  if (x <= 0) return 1/0;
+  if (x <= 0) return 1.0/0;
   if (x >  1) return -my_log(1/x);
   return -asr3(x, 1, 0.00001);
 }

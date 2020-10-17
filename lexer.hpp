@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <cctype>
+#include <cinttypes>
+#include <cstdlib>
 #include <functional>
 #include <any>
 
@@ -22,6 +24,7 @@ enum tag_tok : char {
     
     tok_kw_extern,
 
+    tok_kw_int,
     tok_kw_number,
     tok_kw_string,
     tok_kw_char,
@@ -48,6 +51,8 @@ enum tag_tok : char {
 
     // other tools
     tok_varargs,
+    tok_addadd,
+    tok_subsub,
 
     tok_other
 };
@@ -62,7 +67,8 @@ inline const bool tok_is_type(const tag_tok t) {
   return t == tok_kw_number ||
          t == tok_kw_string ||
          t == tok_kw_char   ||
-         t == tok_kw_bool   ;
+         t == tok_kw_bool   ||
+         t == tok_kw_int    ;
 }
 
 inline llvm::Type* get_type_of_tok(const tag_tok t) {
@@ -75,6 +81,8 @@ inline llvm::Type* get_type_of_tok(const tag_tok t) {
       return llvm::Type::getInt8Ty(g_context);
     case tok_kw_bool:
       return llvm::Type::getInt1Ty(g_context);
+    case tok_kw_int:
+      return llvm::Type::getInt32Ty(g_context);
     default:
       return nullptr;
   }
@@ -87,6 +95,7 @@ inline tag_tok get_tok_of_type(llvm::Type* t) {
       return tok_kw_string;
   if (t->isIntegerTy(8)) return tok_kw_char;
   if (t->isIntegerTy(1)) return tok_kw_bool;
+  if (t->isIntegerTy(32)) return tok_kw_int;
   return tok_invalid;
 }
 
@@ -124,7 +133,6 @@ struct Token {
 class Lexer {
   FileSugar& file;
   std::string tmp_str;
-  double num;
   bool submitted = false, cmd;
 
   inline bool isenter(char ch) { return ch == '\r' || ch == '\n'; }
@@ -175,7 +183,9 @@ public:
       } else if (tmp_str == "extern") {
         curx = tok_kw_extern;
       }
-        else if (tmp_str == "number") {
+        else if (tmp_str == "int") {
+        curx = tok_kw_int;
+      } else if (tmp_str == "number") {
         curx = tok_kw_number;
       } else if (tmp_str == "string") {
         curx = tok_kw_string;
@@ -224,9 +234,8 @@ public:
         if (!isdigit(ch) && ch != '.')
           throw syntax_error("invalid literal float number.");
       }
-
-      num = strtod(tmp_str.c_str(), nullptr);
-      return { tok_lit_num, num };
+      if (verify_dot) return { tok_lit_num, strtod(tmp_str.c_str(), nullptr) };
+      else return { tok_lit_num, atoi(tmp_str.c_str()) };
     }
 
     if (~file == '#') {
@@ -271,7 +280,10 @@ public:
 
     // other symbols
     char tmp_ch = ~file;
-    !file;
+    if (!file == tmp_ch) {
+      if (tmp_ch == '+') return tok_addadd;
+      if (tmp_ch == '-') return tok_subsub;
+    }
 
     if (tmp_ch == '<' || tmp_ch == '>') if (~file == '=')
       { !file; return { tok_other, char(-tmp_ch) }; }

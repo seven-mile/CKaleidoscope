@@ -14,6 +14,10 @@
 // WARNING
 #include "stdlib.cpp"
 
+/// usage: CKaleidoscope                    == command line interface
+///        CKaleidoscope source_file        == run source_file with jit engine
+///   todo CKaleidoscope source_file -o ... == compile source_file to executable file ...
+
 int main(const int nargs, const char *cargs[])
 {
   std::cout << "==============================\n";
