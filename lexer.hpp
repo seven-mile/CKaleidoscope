@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <functional>
 #include <any>
+#include <llvm-9/llvm/IR/Type.h>
 
 #include "global.hpp"
 #include "ioagent.hpp"
@@ -25,6 +26,7 @@ enum tag_tok : char {
     tok_kw_extern,
     tok_kw_const,
 
+    tok_kw_void,
     tok_kw_int,
     tok_kw_number,
     tok_kw_string,
@@ -58,17 +60,18 @@ enum tag_tok : char {
 };
 
 const std::string map_tok[] = {
-  "EOF", "Define", "Extern", "Const", "Number", "String", "Char", "Bool", "True", "False",
+  "EOF", "Define", "Extern", "Const", "Void", "Int", "Number", "String", "Char", "Bool", "True", "False",
   "If", "Else", "For", "Return", "Identity", "Literal Number", "Literal Char", "Literal String",
   "VarArgs Dots", "Self Increment", "Self Decrement", "Other Lang Tool"
 };
 
 inline const bool tok_is_type(const tag_tok t) {
-  return t == tok_kw_number ||
+  return t == tok_kw_int    ||
+         t == tok_kw_void   ||
+         t == tok_kw_number ||
          t == tok_kw_string ||
          t == tok_kw_char   ||
-         t == tok_kw_bool   ||
-         t == tok_kw_int    ;
+         t == tok_kw_bool   ;
 }
 
 inline llvm::Type* get_type_of_tok(const tag_tok t) {
@@ -83,6 +86,8 @@ inline llvm::Type* get_type_of_tok(const tag_tok t) {
       return llvm::Type::getInt1Ty(g_context);
     case tok_kw_int:
       return llvm::Type::getInt32Ty(g_context);
+    case tok_kw_void:
+      return llvm::Type::getVoidTy(g_context);
     default:
       return nullptr;
   }
@@ -189,7 +194,9 @@ public:
       } else if (tmp_str == "const") {
         curx = tok_kw_const;
       }
-        else if (tmp_str == "int") {
+        else if (tmp_str == "void") {
+        curx = tok_kw_void;
+      } else if (tmp_str == "int") {
         curx = tok_kw_int;
       } else if (tmp_str == "number") {
         curx = tok_kw_number;
@@ -284,13 +291,25 @@ public:
 
     // other symbols
     char tmp_ch = ~file;
-    if (!file == tmp_ch) {
-      if (tmp_ch == '+') return tok_addadd;
-      if (tmp_ch == '-') return tok_subsub;
-    }
+    !file;
 
+    if (~file == tmp_ch) {
+      if (tmp_ch == '+') { !file; return tok_addadd; }
+      if (tmp_ch == '-') { !file; return tok_subsub; }
+    }
+    
+    // bit operators
+    // if (tmp_ch == '<') if (~file == '<')
+    //   { !file; return { tok_other, '<' }; }
+    
+    // comparison
     if (tmp_ch == '<' || tmp_ch == '>') if (~file == '=')
       { !file; return { tok_other, char(-tmp_ch) }; }
+
+    if (tmp_ch == '=') if (~file == '=')
+      { !file; return { tok_other, '@' }; }
+    if (tmp_ch == '!') if (~file == '=')
+      { !file; return { tok_other, char(-'@') }; }
 
     return { tok_other, tmp_ch };
   }

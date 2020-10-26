@@ -23,14 +23,7 @@ static inline void init_module_and_pass_mgr() {
   g_fpm->add(llvm::createInstructionCombiningPass());
   g_fpm->add(llvm::createReassociatePass());
   g_fpm->add(llvm::createGVNPass());
-
   g_fpm->add(llvm::createCFGSimplificationPass());
-
-  /// <summary>
-  /// dead insts clear
-  /// </summary>
-  // g_fpm->add(llvm::createDeadInstEliminationPass());
-  
   g_fpm->add(llvm::createSROAPass());
   g_fpm->add(llvm::createDeadInstEliminationPass());
   g_fpm->add(llvm::createPromoteMemoryToRegisterPass());

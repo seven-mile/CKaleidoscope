@@ -12,14 +12,14 @@ STD_API int d2i(double x) {
   return floor(x);
 }
 
-// extern number freopen_in(string file);
-STD_API double freopen_in(const char * file) {
+// extern int freopen_in(string file);
+STD_API int freopen_in(const char * file) {
   freopen(file, "r", stdin);
   return 0;
 }
 
-// extern number freopen_out(string file);
-STD_API double freopen_out(const char * file) {
+// extern int freopen_out(string file);
+STD_API int freopen_out(const char * file) {
   freopen(file, "w", stdout);
   return 0;
 }

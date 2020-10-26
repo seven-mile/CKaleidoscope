@@ -29,10 +29,12 @@ to [create an issue](https://github.com/seven-mile/CKaleidoscope/issues/new).
 - [x] Pointers (such as &,* operator)
 - [ ] Full number types
 - [x] Array type
+- [x] Implement a segment tree
 - [ ] Function (pointer) type
 - [ ] DWARF support ☆ Source-level debug
-- [ ] Compile into executable file,
+- [ ] Compile into executable file
 - [ ] Structure / class
+- [ ] **New bug detected: segfault when data is too large**
 
 ---
 

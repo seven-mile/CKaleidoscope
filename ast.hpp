@@ -6,6 +6,8 @@
 #include <cassert>
 #include <cstddef>
 #include <iostream>
+#include <llvm-9/llvm/ADT/APInt.h>
+#include <string>
 #include <llvm/Support/Casting.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/IR/GlobalVariable.h>
@@ -146,7 +148,7 @@ inline uint get_type_prec(ty* t) {
   switch (t->getTypeID()) {
   case ty::DoubleTyID: return 0x3f3f3f3fu;
   case ty::IntegerTyID: return t->getIntegerBitWidth();
-  case ty::PointerTyID: return t->getIntegerBitWidth(); // hey?
+  case ty::PointerTyID: return 32; // hey?
   default: return (log_err<std::logic_error>("cannot determine the type precedence."), 0);
   }
 }
@@ -163,7 +165,7 @@ public:
 
 class ILeftValue {
 public:
-  virtual llvm::Value* codegen_left() = 0;
+  virtual llvm::Value* codegen_left() const = 0;
 };
 
 class INameGetable {
@@ -347,7 +349,7 @@ class VarExprNode : public LeftExprNode {
 public:
   VarExprNode(const std::string &id) : id(id) {  }
   virtual llvm::Type* get_type() const override {
-    auto tt = g_named_values[id].top()->getType();
+    auto tt = codegen_left()->getType();
     assert(tt->isPointerTy());
     return tt->isPointerTy() ? tt->getPointerElementType() : tt;
   }
@@ -361,7 +363,7 @@ public:
     return g_builder.CreateLoad(ptr, id);
   }
 
-  virtual llvm::Value* codegen_left() override {
+  virtual llvm::Value* codegen_left() const override {
     llvm::Value* ptr = g_named_values[id].top();
     if (!ptr) return log_err("unknown variable name.");
     return ptr;
@@ -389,7 +391,7 @@ public:
       v = g_builder.CreateLoad(v);
     return v;
   }
-  virtual llvm::Value* codegen_left() override {
+  virtual llvm::Value* codegen_left() const override {
     auto ptr = arr->codegen_left();
     if (!ptr) return nullptr;
     auto pos = idx->codegen();
@@ -437,7 +439,6 @@ public:
       auto I = init ? init->codegen() :
                  bArr ? nullptr : get_default_value(v.type);
       if (init && !I) return nullptr;
-      
       
       if (g_bl_now.empty())
       { // global
@@ -516,8 +517,6 @@ public:
   }
 
   virtual llvm::Value* codegen() override {
-    output();
-    std::cerr << std::endl;
     // special for assignment
     if (op == '=') {
       auto p1 = get_type_prec(left->get_type()), p2 = get_type_prec(right->get_type());
@@ -568,6 +567,10 @@ public:
         return g_builder.CreateFCmpULE(L, R, "le");
       case -'>':
         return g_builder.CreateFCmpUGE(L, R, "ge");
+      case '@':
+        return g_builder.CreateFCmpUEQ(L, R, "ueq");
+      case -'@':
+        return g_builder.CreateFCmpUNE(L, R, "une");
       default: break;
       }
     } else if (res_ty->isIntegerTy()) {
@@ -594,6 +597,10 @@ public:
         return g_builder.CreateICmpULE(L, R, "le");
       case -'>':
         return g_builder.CreateICmpUGE(L, R, "ge");
+      case '@':
+        return g_builder.CreateICmpEQ(L, R, "eq");
+      case -'@':
+        return g_builder.CreateICmpNE(L, R, "ne");
       default: break;
       }
     }
@@ -645,7 +652,9 @@ public:
       lv_args.push_back(V);
     }
 
-    return g_builder.CreateCall(l_func, lv_args, "call");
+    return l_func->getReturnType()->isVoidTy() ? 
+            g_builder.CreateCall(l_func, lv_args) :
+            g_builder.CreateCall(l_func, lv_args, "call");
   }
 
   virtual std::string get_name() const override {
@@ -671,6 +680,8 @@ public:
     if (!V) return nullptr;
 
     auto ret_ty = g_builder.getCurrentFunctionReturnType();
+    if (ret_ty->isVoidTy())
+      return g_builder.CreateRetVoid();
     auto p1 = get_type_prec(val->get_type()), p2 = get_type_prec(ret_ty);
     if (p1 > p2) return log_err("return value type is not capable for the function.");
     if (ret_ty->isDoubleTy() && val->get_type()->isIntegerTy())
@@ -688,10 +699,8 @@ public:
 class BlockNode : public StmtNode {
   using list_t = std::vector<stmt_t>;
   list_t v;
-  std::vector<std::string> extra_pop;
-  bool rb; // require_brace
 public:
-  BlockNode(list_t v, bool rb = false) : v(std::move(v)), rb(rb) {  }
+  BlockNode(list_t v) : v(std::move(v)) {  }
   virtual ~BlockNode() = default;
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
@@ -702,23 +711,6 @@ public:
   virtual llvm::Value* codegen() override {
     g_bl_now.push(this);
 
-    auto func = g_builder.GetInsertBlock()->getParent();
-    auto ret_ty = func->getReturnType();
-    llvm::AllocaInst* var_ret;
-    if (rb && !ret_ty->isVoidTy())
-    {
-      g_bl_ret = llvm::BasicBlock::Create(g_context, "__return_block");
-      var_ret = 
-        create_alloca_in_entry(
-          func,   Var {
-          "__return_value",
-          get_tok_of_type(ret_ty)
-        });
-      
-      g_named_values["__return_value"].push(var_ret);
-      extra_pop.push_back("__return_value");
-    }
-
     for (auto &x:v) {
       x->codegen();
       if (instof<RetStmtNode>(*x))
@@ -728,20 +720,6 @@ public:
     for (auto &x:v) if (instof<VarDeclNode>(*x))
       for (auto &[var, init] : dynamic_cast<VarDeclNode*>(x.get())->get_list())
         g_named_values[var.name].pop();
-    for (auto &x:extra_pop) g_named_values[x].pop();
-
-    if (rb) {
-      if (ret_ty->isVoidTy())
-        g_builder.CreateRetVoid();
-      else {
-        auto& ls = func->getBasicBlockList().back().getInstList();
-        bool term = ls.empty() | !ls.back().isTerminator();
-        func->getBasicBlockList().push_back(g_bl_ret);
-        if (term) g_builder.CreateBr(g_bl_ret);
-        g_builder.SetInsertPoint(g_bl_ret);
-        g_builder.CreateRet(g_builder.CreateLoad(var_ret));
-      }
-    }
 
     g_bl_now.pop();
 
@@ -750,7 +728,6 @@ public:
   virtual std::string get_name() const override {
     return "block";
   }
-  auto& get_extra_pop() { return extra_pop; }
 };
 
 using block_t = std::unique_ptr<class BlockNode>;
@@ -778,11 +755,20 @@ public:
 
   virtual llvm::Value* codegen() override {
     auto vl_cond = cond->codegen();
-    if (vl_cond->getType()->getTypeID() != llvm::Type::getInt1Ty(g_context)->getTypeID())
-    vl_cond = g_builder.CreateFCmpONE(
-      vl_cond,
-      llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
-      "ifcond");
+    if (vl_cond->getType() != llvm::Type::getInt1Ty(g_context) || vl_cond->getType()->getIntegerBitWidth() != 1)
+    {
+      if (vl_cond->getType()->isIntegerTy())
+        vl_cond = g_builder.CreateICmpNE(
+          vl_cond,
+          llvm::ConstantInt::get(vl_cond->getType(), 0),
+          "ifcond");
+      else if (vl_cond->getType()->isDoubleTy())
+        vl_cond = g_builder.CreateFCmpONE(
+          vl_cond,
+          llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
+          "ifcond");
+      else return log_err("unsupported condition expression type.");
+    }
     
     // func is the current block's parent, not absolutely really a function.
     auto func = g_builder.GetInsertBlock()->getParent();
@@ -801,8 +787,8 @@ public:
     if (!vl_then) return nullptr;
 
     // skip else, br to merg
-    if (!g_builder.GetInsertBlock()->getInstList()
-                          .back().isTerminator())
+    if (g_builder.GetInsertBlock()->getInstList().empty()
+      || !g_builder.GetInsertBlock()->getInstList().back().isTerminator())
       g_builder.CreateBr(bl_merg);
     bl_then = g_builder.GetInsertBlock();
 
@@ -816,10 +802,14 @@ public:
     }
 
     // Also
-    if (!g_builder.GetInsertBlock()->getInstList()
-                          .back().isTerminator())
+    if (g_builder.GetInsertBlock()->getInstList().empty()
+      || !g_builder.GetInsertBlock()->getInstList().back().isTerminator())
       g_builder.CreateBr(bl_merg);
-    bl_else = g_builder.GetInsertBlock();
+
+    if (bl_else->getInstList().empty()
+      || !bl_else->getInstList().back().isTerminator())
+      g_builder.SetInsertPoint(bl_else),
+      g_builder.CreateBr(bl_merg);
 
     func->getBasicBlockList().push_back(bl_merg);
     g_builder.SetInsertPoint(bl_merg);
@@ -871,11 +861,19 @@ public:
 
     // re-eval cond every loop
     auto vl_cond = cond->codegen();
-    if (!vl_cond->getType()->isIntegerTy(1))
-      vl_cond = g_builder.CreateFCmpONE(
-        vl_cond,
-        llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
-        "ifcond");
+    if (!vl_cond->getType()->isIntegerTy(1)) {
+      if (vl_cond->getType()->isIntegerTy())
+        vl_cond = g_builder.CreateICmpNE(
+          vl_cond,
+          llvm::ConstantInt::get(vl_cond->getType(), 0),
+          "loopcond");
+      else if (vl_cond->getType()->isDoubleTy())
+        vl_cond = g_builder.CreateFCmpUNE(
+          vl_cond,
+          llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
+          "loopcond");
+      else return log_err("unsupported condition expression type.");
+    }
 
     g_builder.CreateCondBr(vl_cond, bl_body, bl_after);
 
@@ -988,16 +986,47 @@ public:
     auto bas_blo = llvm::BasicBlock::Create(g_context, "entry", fun);
     g_builder.SetInsertPoint(bas_blo);
 
+    std::vector<std::string> extra_pop;
+
     for (auto& arg: fun->args()) {
-      body->get_extra_pop().push_back(arg.getName());
+      extra_pop.push_back(arg.getName());
       auto alloca = create_alloca_in_entry(
           fun, Var { arg.getName(), get_tok_of_type(arg.getType()) });
       g_builder.CreateStore(&arg, alloca);
       g_named_values[arg.getName()].push(alloca);
     }
+    auto ret_ty = fun->getReturnType();
+    llvm::AllocaInst* var_ret;
+    if (!ret_ty->isVoidTy())
+    {
+      g_bl_ret = llvm::BasicBlock::Create(g_context, "__return_block");
+      var_ret = 
+        create_alloca_in_entry(
+          fun,   Var {
+          "__return_value",
+          get_tok_of_type(ret_ty)
+        });
+      
+      g_named_values["__return_value"].push(var_ret);
+      extra_pop.push_back("__return_value");
+    }
     auto vl_body = body->codegen();
     if (vl_body) {
+      for (auto &x:extra_pop) g_named_values[x].pop();
+
+      if (ret_ty->isVoidTy())
+        g_builder.CreateRetVoid();
+      else {
+        auto& ls = fun->getBasicBlockList().back().getInstList();
+        bool term = ls.empty() | !ls.back().isTerminator();
+        fun->getBasicBlockList().push_back(g_bl_ret);
+        if (term) g_builder.CreateBr(g_bl_ret);
+        g_builder.SetInsertPoint(g_bl_ret);
+        g_builder.CreateRet(g_builder.CreateLoad(var_ret));
+      }
+
       llvm::verifyFunction(*fun);
+
       // optimize it
       g_fpm->run(*fun);
 
@@ -1007,7 +1036,7 @@ public:
     return nullptr;
   }
 
-  virtual llvm::Value* codegen_left() override {
+  virtual llvm::Value* codegen_left() const override {
     auto fun = get_func(proto->get_name());
     if (!fun) return log_err("unknown function name!");
     return fun;
@@ -1092,7 +1121,7 @@ public:
   virtual std::string get_name() const override {
     return std::string(is_add ? "in" : "de") + "crement";
   }
-  virtual llvm::Value* codegen_left() override {
+  virtual llvm::Value* codegen_left() const override {
     return dynamic_cast<ILeftValue*>(left.get())->codegen_left();
   }
 };

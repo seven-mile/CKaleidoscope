@@ -1,0 +1,104 @@
+extern int printf(string fmt, ...);
+extern int scanf(string fmt, ...);
+extern char getchar();
+extern char putchar();
+extern int puts(string str);
+extern int freopen_in(string file);
+extern int freopen_out(string file);
+
+def int rd() {
+  int x;
+  scanf("%d", &x);
+  return x;
+}
+
+int M;
+int a[100005], s[400005], pt[400005], mt[400005];
+
+def void pushup(int x) {
+  int ls = 2*x, rs = 2*x+1;
+  s[x] = (s[ls] + s[rs]) % M;
+}
+
+def void pushdown(int x, int l, int r) {
+  int mid = (l + r) / 2, ls = 2*x, rs = 2*x+1;
+  if (mt[x] != 1) {
+    s[ls] = s[ls] * mt[x] % M;
+    s[rs] = s[rs] * mt[x] % M;
+    pt[ls] = pt[ls] * mt[x] % M;
+    pt[rs] = pt[rs] * mt[x] % M;
+    mt[ls] = mt[ls] * mt[x] % M;
+    mt[rs] = mt[rs] * mt[x] % M;
+    mt[x] = 1;
+  }
+  if (pt[x]) {
+    s[ls] = (s[ls] + (mid - l + 1) * pt[x]) % M;
+    s[rs] = (s[rs] + (r - mid) * pt[x]) % M;
+    pt[ls] = (pt[ls] + pt[x]) % M;
+    pt[rs] = (pt[rs] + pt[x]) % M;
+    pt[x] = 0;
+  }
+}
+
+def void build(int x, int l, int r) {
+  pt[x] = 0; mt[x] = 1;
+  if (l == r) {
+    s[x] = a[l];
+  } else {
+    int mid = (l+r)/2;
+    build(2*x, l, mid); build(2*x+1, mid+1, r);
+    pushup(x);
+  }
+}
+
+def void add(int x, int l, int r, int L, int R, int k) {
+  pushdown(x, l, r);
+  if (l >= L) if (r <= R) {
+    pt[x] = (pt[x] + k) % M;
+    s[x] = (s[x] + (r-l+1)*k) % M;
+    return ;
+  }
+  int mid = (l + r) / 2;
+  if (mid >= L) add(2*x, l, mid, L, R, k);
+  if (mid <R) add(2*x+1, mid+1, r, L, R, k);
+  pushup(x);
+}
+
+def void mul(int x, int l, int r, int L, int R, int k) {
+  pushdown(x, l, r);
+  if (l >= L) if (r <= R) {
+    mt[x] = mt[x] * k % M;
+    s[x] = s[x] * k % M;
+    return ;
+  }
+  int mid = (l + r) / 2;
+  if (mid >= L) mul(2*x, l, mid, L, R, k);
+  if (mid <R) mul(2*x+1, mid+1, r, L, R, k);
+  pushup(x);
+}
+
+def int query(int x, int l, int r, int L, int R) {
+  pushdown(x, l, r);
+  if (l >= L) if (r <= R) return s[x];
+
+  int mid = (l + r) / 2, res = 0;
+  if (mid >= L) res = (res + query(2*x, l, mid, L, R)) % M;
+  if (mid <R) res = (res + query(2*x+1, mid+1, r, L, R)) % M;
+  return res;
+}
+
+def int main() {
+  freopen_in("./test/segtree/data.in");
+  freopen_out("./test/segtree/data.out");
+  int n = rd(), T = rd();
+  M = rd();
+  for (int i=1; i<=n; i++) a[i] = rd();
+  build(1, 1, n);
+  for (; T--; ) {
+    int op = rd(), l = rd(), r = rd();
+    if (op == 1) mul(1, 1, n, l, r, rd() % M);
+    if (op == 2) add(1, 1, n, l, r, rd() % M);
+    if (op == 3) printf("%d\n", query(1, 1, n, l, r));
+  }
+  return 0;
+}

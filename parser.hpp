@@ -25,6 +25,7 @@ std::map<char, int> map_op_prior
   {'=', 2},
   {'<', 5}, {'>', 5},
   {-'<', 5}, {-'>', 5}, // <= and >=
+  {'@', 5}, {-'@', 5}, // == and !=
   {'+', 10}, {'-', 10},
   {'*', 20}, {'/', 20}, {'%', 20},
 };
@@ -122,8 +123,10 @@ public:
     if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
       if (!L->is_left())
         return log_err("invalid expression for addadd, expected a left value.");
+      bool is_add = cur_tok.type == tok_addadd;
+      adv();
       return std::make_unique<SelfBackCreExprNode>(
-        static_unique_ptr_cast<ExprNode>(std::move(L)), cur_tok.type == tok_addadd);
+        static_unique_ptr_cast<ExprNode>(std::move(L)), is_add);
     }
 
     return L;
@@ -210,7 +213,7 @@ public:
             "unexpected token, a left brace is expected for the start of the block.");
       v.push_back(parse_stmt());
     }
-    return std::make_unique<BlockNode>(std::move(v), require_brace);
+    return std::make_unique<BlockNode>(std::move(v));
   }
 
   // lhs binop(pr) rest_section
@@ -353,11 +356,16 @@ public:
     auto cond = parse_expr();
     if (!cond) return nullptr;
 
+    // for (...; ; ...) -> for (...; true; ...)
+    if (instof<NullStmt*>(cond.get()))
+      cond = std::make_unique<BoolExprNode>(true);
+
     if (!cur_tok.is_tool(';'))
       log_err("unexpected token, expected the token ';'");
     
     adv(); // ;
-    stmt_t every = parse_stmt();
+
+    stmt_t every = cur_tok.is_tool(')') ? std::make_unique<NullStmt>() : parse_stmt();
     if (!every) return nullptr;
 
     if (!cur_tok.is_tool(')'))

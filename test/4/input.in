@@ -1,10 +1,10 @@
 # TODO: need array type
 
-number f[101], cnt;
+int f[1000005], cnt;
 
-extern number printf(string fmt, ...);
+extern int printf(string fmt, ...);
 
-def number fib(number n) {
+def int fib(int n) {
   # memorized
   if (f[n]) return f[n];
   if (n <= 2) return 1;
@@ -14,12 +14,16 @@ def number fib(number n) {
   }
 }
 
-def number main() {
-  printf("hello!!! I'm fine...\n");
-  for (number i=1; i<=7; i=i+1)
-    printf("fib(%.0f) = %f\n", i, fib(i));
-    
-  printf("cnt = %f!", cnt);
+def int main() {
+  # for (int i=1; i<=1000000; i=i+1)
+  #   printf("fib(%d) = %f\n", i, fib(i));
+  
+  printf("hey???\n");
+  int xx = 172500;
+  printf("xx = %d\n", xx);
+  printf("fib (%d) = %d\n", xx, fib(xx));
+
+  printf("cnt = %d!", cnt);
 
   return 0;
 }
