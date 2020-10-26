@@ -23,6 +23,7 @@ enum tag_tok : char {
     tok_kw_def,
     
     tok_kw_extern,
+    tok_kw_const,
 
     tok_kw_int,
     tok_kw_number,
@@ -37,7 +38,6 @@ enum tag_tok : char {
     tok_kw_else,
 
     tok_kw_for,
-    tok_kw_in,
 
     tok_kw_return,
 
@@ -58,9 +58,9 @@ enum tag_tok : char {
 };
 
 const std::string map_tok[] = {
-  "EOF", "Define", "Extern", "Number", "String", "Char", "Bool", "True", "False",
-  "If", "Else", "For", "In", "Return", "Identity", "Literal Number",
-  "Literal Char", "Literal String", "VarArgs Dots", "Other Lang Tool"
+  "EOF", "Define", "Extern", "Const", "Number", "String", "Char", "Bool", "True", "False",
+  "If", "Else", "For", "Return", "Identity", "Literal Number", "Literal Char", "Literal String",
+  "VarArgs Dots", "Self Increment", "Self Decrement", "Other Lang Tool"
 };
 
 inline const bool tok_is_type(const tag_tok t) {
@@ -115,6 +115,10 @@ struct Token {
 
   bool is_type() const {
     return tok_is_type(type);
+  }
+
+  bool is_spec() const {
+    return type == tok_kw_const;// || type == tok_kw_extern;
   }
 
   bool is_tool(const char tool) const {
@@ -182,6 +186,8 @@ public:
         curx = tok_kw_def;
       } else if (tmp_str == "extern") {
         curx = tok_kw_extern;
+      } else if (tmp_str == "const") {
+        curx = tok_kw_const;
       }
         else if (tmp_str == "int") {
         curx = tok_kw_int;
@@ -206,9 +212,7 @@ public:
       }
         else if (tmp_str == "for") {
         curx = tok_kw_for;
-      } else if (tmp_str == "in") {
-        curx = tok_kw_in;
-      } 
+      }
         else if (tmp_str == "return") {
         curx = tok_kw_return;
       }

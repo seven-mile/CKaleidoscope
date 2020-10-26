@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <any>
+#include <memory>
 
 #include "errdef.hpp"
 
@@ -37,3 +38,11 @@ bool instof(const TFT& x) {
 }
 
 };
+
+template<typename Derived, typename Base>
+std::unique_ptr<Derived> 
+static_unique_ptr_cast(std::unique_ptr<Base> && p)
+{
+    auto d = static_cast<Derived *>(p.release());
+    return std::unique_ptr<Derived>(d, std::move(p.get_deleter()));
+}

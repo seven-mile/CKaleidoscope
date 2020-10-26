@@ -119,6 +119,13 @@ public:
     while (cur_tok.is_tool('['))
       L = parse_subscr(std::move(L));
     
+    if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
+      if (!L->is_left())
+        return log_err("invalid expression for addadd, expected a left value.");
+      return std::make_unique<SelfBackCreExprNode>(
+        static_unique_ptr_cast<ExprNode>(std::move(L)), cur_tok.type == tok_addadd);
+    }
+
     return L;
   }
 
@@ -154,7 +161,14 @@ public:
       return parse_for();
     if (cur_tok.type == tok_kw_return)
       return parse_return();
-    if (cur_tok.is_type())
+    if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
+      adv();
+      auto left = parse_expr();
+      if (!left->is_left())
+        return log_err("invalid expression for addadd, expected a left value.");
+      return std::make_unique<SelfFrontCreExprNode>(std::move(left), cur_tok.type == tok_addadd);
+    }
+    if (cur_tok.is_type() || cur_tok.is_spec())
       return parse_dvar();
     if (cur_tok.is_tool('('))
       return parse_paren();
@@ -369,6 +383,9 @@ public:
   }
 
   stmt_t parse_dvar() {
+    bool is_const = false;
+    if (cur_tok.type == tok_kw_const) is_const = true, adv();
+
     auto ty = get_type_of_tok(cur_tok.type);
     adv();
 
@@ -418,7 +435,7 @@ public:
       adv();
     }
 
-    return std::make_unique<VarDeclNode>(lst);
+    return std::make_unique<VarDeclNode>(lst, is_const);
   }
 
   // global scope (naked) codes, considered as a function
@@ -461,7 +478,7 @@ public:
         if (cmd) std::cerr << prom;
         adv();
       }
-      if (cur_tok.is_type()) {
+      if (cur_tok.is_type() || cur_tok.is_spec()) {
         auto gvar = parse_dvar();
         if (gvar) gvar->codegen();
         continue;

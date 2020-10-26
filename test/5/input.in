@@ -1,7 +1,7 @@
 extern int printf(...);
 extern int scanf(...);
 
-int M;
+const int M = 1579;
 int fac[1001], ifac[1001];
 
 def int rd() {
@@ -20,11 +20,6 @@ def int qpow(int a, int b) {
 }
 
 def int main() {
-  # test double + int
-  printf("sum = %f\n", 1 + 0.1);
-
-  # set mod ...
-  M = 1579;
   fac[0] = 1;
   fac[1] = 1;
   ifac[0] = 1;

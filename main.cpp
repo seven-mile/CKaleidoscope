@@ -1,4 +1,5 @@
 #include <bits/stdc++.h>
+#include <llvm/ExecutionEngine/JITSymbol.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/raw_ostream.h>
@@ -51,6 +52,13 @@ int main(const int nargs, const char *cargs[])
     bool broken;
     bool ret = llvm::verifyModule(*zMile::g_module, &llvm::dbgs(), &broken);
 
+    auto ptrFunc = zMile::get_func("main");
+    if (!ptrFunc->getReturnType()->isIntegerTy(32)
+     || !ptrFunc->arg_empty()) {
+      std::cerr << "\nunknown main function signature" << std::endl;
+      exit(1);
+    }
+
     // add new module to submit the current module.
     zMile::g_jit->addModule(std::move(zMile::g_module));
     zMile::init_module_and_pass_mgr();
@@ -59,7 +67,7 @@ int main(const int nargs, const char *cargs[])
   auto expr_main = zMile::g_jit->findSymbol("main");
   if (auto ptr = expr_main.getAddress())
   {
-    auto res = ((double(*)())*ptr)();
+    auto res = ((int(*)())*ptr)();
     std::cerr << "\nProgram exited with return value " << res << std::endl;
   }
   else {

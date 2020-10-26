@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstddef>
 #include <iostream>
+#include <llvm/Support/Casting.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/IR/GlobalVariable.h>
 
@@ -101,6 +102,35 @@ inline llvm::Constant* get_default_value(llvm::Type* t) {
   return get_default_value(get_tok_of_type(t));
 }
 
+inline llvm::Constant* get_const_value_as(llvm::Type* ty, llvm::Value *I) {
+  if (I) {
+    if (I->getType()->isIntegerTy()) {
+      auto CI = llvm::dyn_cast<llvm::ConstantInt>(I);
+      if (ty->isDoubleTy())
+        return llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), llvm::APFloat(CI->getValue().bitsToDouble()));
+      else if (ty->isIntegerTy() && ty->getIntegerBitWidth() >= I->getType()->getIntegerBitWidth())
+        return CI;
+      else return log_err("no available converter for the global variable initializer.");
+    }
+    else if (I->getType()->isDoubleTy()) {
+      auto CF = llvm::dyn_cast<llvm::ConstantFP>(I);
+      if (ty->isDoubleTy())
+        return CF;
+      else return log_err("no available converter for the global variable initializer.");
+    }
+    else if (I->getType()->isPointerTy()) {
+      auto CP = llvm::dyn_cast<llvm::Constant>(I);
+      if (ty->isPointerTy()) {
+        return CP;
+        if (ty->getPointerElementType() != I->getType())
+          std::cerr << "warning: unsafe pointer convertion." << std::endl;
+      }
+      else return log_err("no available converter for the global variable initializer.");
+    } else return log_err("initializer used for unsupported type.");
+  }
+  return nullptr;
+}
+
 inline llvm::Function* get_func(std::string name);
 
 inline llvm::AllocaInst* create_alloca_in_entry(
@@ -167,6 +197,7 @@ using ExprNode = Node;
 using expr_t = std::unique_ptr<ExprNode>;
 
 class LeftExprNode : public ExprNode, public ILeftValue {
+public:
   virtual bool is_left() override { return true; }
 };
 using left_t = std::unique_ptr<LeftExprNode>;
@@ -380,8 +411,10 @@ class VarDeclNode : public DeclNode {
   using list_t = std::vector<ele_t>;
   list_t lst;
 
+  bool is_const;
+
 public:
-  VarDeclNode(list_t& lst) : lst(std::move(lst)) {  }
+  VarDeclNode(list_t& lst, bool is_const = false) : lst(std::move(lst)), is_const(is_const) {  }
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"VarDeclNode\", \"lst\": ";
@@ -404,32 +437,39 @@ public:
       auto I = init ? init->codegen() :
                  bArr ? nullptr : get_default_value(v.type);
       if (init && !I) return nullptr;
-
-      auto p1 = get_type_prec(I->getType()), p2 = get_type_prec(v.type);
-      if (p1 > p2) return log_err("the initial value type is not capable for the variable.");
-      if (I->getType()->isIntegerTy() && v.type->isDoubleTy())
-        I = g_builder.CreateSIToFP(I, v.type);
+      
       
       if (g_bl_now.empty())
       { // global
-        if (v.type->isAggregateType())
-          assert(I == nullptr); // not allowed so far
 
         if (g_named_values.find(v.name) != g_named_values.end()
             || !g_named_values[v.name].empty())
           throw syntax_error("global variable name has been occupied.");
-
-        auto A = new llvm::GlobalVariable(*g_module, v.type, false,
-        llvm::Function::InternalLinkage,
-        get_default_value(v.type), v.name);
+        
+        auto A = new llvm::GlobalVariable(*g_module, v.type, is_const,
+              llvm::Function::InternalLinkage,
+              I ? get_const_value_as(v.type, I) : get_default_value(v.type), v.name);
 
         // maintain the symbol table
         g_named_values[v.name].push(A);
       } else { // local
-        auto A = g_builder.CreateAlloca(v.type, nullptr, v.name);
-        if (I) g_builder.CreateStore(I, A);
-        // maintain the symbol table
-        g_named_values[v.name].push(A);
+        if (is_const) {
+          g_named_values[v.name].push(get_const_value_as(v.type, I));
+        } else {
+          // for possible cast
+          if (I) {
+            auto p1 = get_type_prec(I->getType()), p2 = get_type_prec(v.type);
+            if (p1 > p2) return log_err("the initial value type is not capable for the variable.");
+            if (I->getType()->isIntegerTy() && v.type->isDoubleTy())
+              I = g_builder.CreateSIToFP(I, v.type);
+          }
+
+          auto A = g_builder.CreateAlloca(v.type, nullptr, v.name);
+          if (I) g_builder.CreateStore(I, A);
+          // maintain the symbol table
+          g_named_values[v.name].push(A);
+        }
+
       }
     }
     return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
@@ -1017,7 +1057,7 @@ public:
   virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerElementType(); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"DisAddressExpr\", \"operand\": ";
-    operand->output();
+    operand->output(os);
     os << " }";
   }
   virtual llvm::Value* codegen() override {
@@ -1026,6 +1066,63 @@ public:
   virtual std::string get_name() const override {
     return "DisAddr(" + operand->get_name() + ")";
   }
+};
+
+class SelfFrontCreExprNode : public ExprNode, public ILeftValue {
+  expr_t left;
+  bool is_add;
+public:
+  SelfFrontCreExprNode(expr_t left, bool is_add)
+      : left(std::move(left)), is_add(is_add) {  }
+
+  virtual llvm::Type* get_type() const override { return left->get_type(); }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ \"node_type\": \"Self" << (is_add ? "In" : "De") << "crementExpr\", \"left\": ";
+    left->output(os);
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    auto P = left->codegen();
+    auto Q = g_builder.CreateAdd(P, llvm::ConstantInt::get(g_context, llvm::APInt(32, is_add ? 1 : -1)));
+    auto L = dynamic_cast<ILeftValue*>(left.get())->codegen_left();
+    g_builder.CreateStore(Q, L);
+
+    return Q;
+  }
+  virtual std::string get_name() const override {
+    return std::string(is_add ? "in" : "de") + "crement";
+  }
+  virtual llvm::Value* codegen_left() override {
+    return dynamic_cast<ILeftValue*>(left.get())->codegen_left();
+  }
+};
+
+class SelfBackCreExprNode : public ExprNode {
+  expr_t left;
+  bool is_add;
+public:
+  SelfBackCreExprNode(expr_t left, bool is_add)
+      : left(std::move(left)), is_add(is_add) {  }
+
+  virtual llvm::Type* get_type() const override { return left->get_type(); }
+  virtual void output(std::ostream & os = std::cerr) override {
+    os << "{ \"node_type\": \"SelfBack" << (is_add ? "In" : "De")
+       << "crementExpr\", \"left\": ";
+    left->output(os);
+    os << " }";
+  }
+  virtual llvm::Value* codegen() override {
+    auto P = left->codegen();
+    auto Q = g_builder.CreateAdd(P, llvm::ConstantInt::get(g_context, llvm::APInt(32, is_add ? 1 : -1)));
+    auto L = dynamic_cast<ILeftValue*>(left.get())->codegen_left();
+    g_builder.CreateStore(Q, L);
+
+    return P;
+  }
+  virtual std::string get_name() const override {
+    return std::string(is_add ? "in" : "de") + "crement";
+  }
+
 };
 
 }
