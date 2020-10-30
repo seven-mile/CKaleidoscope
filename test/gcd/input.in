@@ -1,0 +1,28 @@
+extern int printf(string fmt, ...);
+extern int scanf(string fmt, ...);
+extern char getchar();
+extern char putchar();
+extern int puts(string str);
+extern int freopen_in(string file);
+extern int freopen_out(string file);
+
+def int rd() {
+  int x;
+  scanf("%d", &x);
+  return x;
+}
+
+
+def int gcd(int x, int y) {
+  if (x < y) {
+    int t = x;
+    x = y;
+    y = t;
+  }
+  if (y == 0) return x;
+  return gcd(x % y, y);
+}
+
+def int main() {
+  printf("%d\n", gcd(rd(),rd()));
+}

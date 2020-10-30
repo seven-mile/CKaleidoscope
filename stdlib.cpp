@@ -3,7 +3,6 @@
 
 #define STD_API extern "C"
 
-// extern number putch(char c);
 STD_API double i2d(int x) {
   return x;
 }

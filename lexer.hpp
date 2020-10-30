@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <functional>
 #include <any>
-#include <llvm-9/llvm/IR/Type.h>
+#include <llvm/IR/Type.h>
 
 #include "global.hpp"
 #include "ioagent.hpp"
@@ -40,6 +40,7 @@ enum tag_tok : char {
     tok_kw_else,
 
     tok_kw_for,
+    tok_kw_while,
 
     tok_kw_return,
 
@@ -61,7 +62,7 @@ enum tag_tok : char {
 
 const std::string map_tok[] = {
   "EOF", "Define", "Extern", "Const", "Void", "Int", "Number", "String", "Char", "Bool", "True", "False",
-  "If", "Else", "For", "Return", "Identity", "Literal Number", "Literal Char", "Literal String",
+  "If", "Else", "For", "While", "Return", "Identity", "Literal Number", "Literal Char", "Literal String",
   "VarArgs Dots", "Self Increment", "Self Decrement", "Other Lang Tool"
 };
 
@@ -219,6 +220,8 @@ public:
       }
         else if (tmp_str == "for") {
         curx = tok_kw_for;
+      } else if (tmp_str == "while") {
+        curx = tok_kw_while;
       }
         else if (tmp_str == "return") {
         curx = tok_kw_return;
@@ -231,21 +234,28 @@ public:
     if (isdigit(~file) || ~file == '.') {
       tmp_str.clear();
       do tmp_str += ~file;
-      while(isdigit(!file) || ~file == '.');
+      while(isdigit(!file) || ~file == '.' || ~file == 'e'
+            || (tmp_str.back() == 'e' && ~file == '-'));
 
       upd();
 
       if (tmp_str == "...")
         return { tok_varargs, tmp_str };
       
-      size_t verify_dot = 0;
+      size_t verify_dot = 0, verify_e = 0;
       for (char ch : tmp_str) {
-        if (ch == '.') if (++verify_dot > 1)
-          throw syntax_error("two many dots in float number.");
-        if (!isdigit(ch) && ch != '.')
+        if (ch == '.') {
+          if (++verify_dot > 1)
+            throw syntax_error("two many dots in float number.");
+          if (verify_e)
+            throw syntax_error("non integer exponent is invalid.");
+        }
+        if (ch == 'e') if (++verify_e   > 1)
+          throw syntax_error("two many exp in float number.");
+        if (!isdigit(ch) && ch != '.' && ch != 'e' && ch != '-')
           throw syntax_error("invalid literal float number.");
       }
-      if (verify_dot) return { tok_lit_num, strtod(tmp_str.c_str(), nullptr) };
+      if (verify_dot || verify_e) return { tok_lit_num, strtod(tmp_str.c_str(), nullptr) };
       else return { tok_lit_num, atoi(tmp_str.c_str()) };
     }
 

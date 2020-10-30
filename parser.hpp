@@ -140,7 +140,7 @@ public:
     if (!operand->is_left())
       return log_err("unexpected token, expected a variable or function name.");
     
-    return std::make_unique<AddressExprNode>(std::move(operand));
+    return std::make_unique<UnaryExprNode>('&', std::move(operand));
   }
 
   node_t parse_prim(bool hasSign = false) {
@@ -162,6 +162,8 @@ public:
       return parse_if();
     if (cur_tok.type == tok_kw_for)
       return parse_for();
+    if (cur_tok.type == tok_kw_while)
+      return parse_while();
     if (cur_tok.type == tok_kw_return)
       return parse_return();
     if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
@@ -177,10 +179,16 @@ public:
       return parse_paren();
     if (cur_tok.is_tool('{'))
       return parse_block();
+    
     if (cur_tok.is_tool('&'))
       return parse_addr();
     if (cur_tok.is_tool('*'))
-      return adv(), std::make_unique<DisAddrExprNode>(parse_expr());
+      return adv(), std::make_unique<UnaryExprNode>('*', parse_expr());
+    if (cur_tok.is_tool('!'))
+      return adv(), std::make_unique<UnaryExprNode>('!', parse_expr());
+    if (cur_tok.is_tool('~'))
+      return adv(), std::make_unique<UnaryExprNode>('~', parse_expr());
+
     if (!hasSign && cur_tok.type == tok_other) {
       if (cur_tok.is_tool('+')) {
         auto expr = (adv(), parse_prim(true));
@@ -377,6 +385,32 @@ public:
 
     return std::make_unique<ForStmtNode>(std::move(start),
            std::move(cond), std::move(every), std::move(body));
+  }
+
+  node_t parse_while() {
+    adv(); // while
+    if (!cur_tok.is_tool('('))
+      log_err("unexpected token, expected the token '('");
+    
+    adv(); // (
+
+    auto cond = parse_expr();
+    if (!cond) return nullptr;
+
+    // while (;)
+    if (instof<NullStmt*>(cond.get())) {
+      return log_err("while condition expression can't be empty");
+    }
+
+    if (!cur_tok.is_tool(')'))
+      log_err("unexpected token, expected the token ')'");    
+    
+    adv(); // )
+    auto body = parse_block();
+    if (!body) return nullptr;
+
+    return std::make_unique<ForStmtNode>(std::make_unique<NullStmt>(),
+           std::move(cond), std::make_unique<NullStmt>(), std::move(body));
   }
 
   stmt_t parse_return() {

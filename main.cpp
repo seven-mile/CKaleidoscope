@@ -67,8 +67,12 @@ int main(const int nargs, const char *cargs[])
   auto expr_main = zMile::g_jit->findSymbol("main");
   if (auto ptr = expr_main.getAddress())
   {
-    auto res = ((int(*)())*ptr)();
-    std::cerr << "\nProgram exited with return value " << res << std::endl;
+    if (*ptr) {
+      auto res = ((int(*)())*ptr)();
+      std::cerr << "\nProgram exited with return value " << res << "." << std::endl;
+    } else {
+      std::cerr << "\nNo proper main function, exiting." << std::endl;
+    }
   }
   else {
     llvm::logAllUnhandledErrors(ptr.takeError(), llvm::errs(), "kaleido err: ");

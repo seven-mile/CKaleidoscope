@@ -1,0 +1,20 @@
+extern int printf(string fmt, ...);
+extern int scanf(string fmt, ...);
+extern char getchar();
+extern char putchar();
+extern int isdigit(char ch);
+extern int puts(string str);
+extern int freopen_in(string file);
+extern int freopen_out(string file);
+
+def int rd() {
+  int x=0,f=1;char c;while(!isdigit(c=getchar()))if(c=='-')f=-1;
+  for(;isdigit(c);c=getchar())x=x*10+c-'0';return x*f;
+}
+
+def int main() {
+  int a = rd(), b = rd();
+  printf("%d\n", a+b);
+
+  return 0;
+}

@@ -6,11 +6,7 @@
 #include <cassert>
 #include <cstddef>
 #include <iostream>
-#include <llvm-9/llvm/ADT/APInt.h>
 #include <string>
-#include <llvm/Support/Casting.h>
-#include <llvm/ExecutionEngine/ExecutionEngine.h>
-#include <llvm/IR/GlobalVariable.h>
 
 #include <map>
 #include <memory>
@@ -21,6 +17,8 @@
 
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/IR/GlobalVariable.h>
+#include <llvm/ADT/APInt.h>
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/IR/BasicBlock.h>
@@ -151,6 +149,14 @@ inline uint get_type_prec(ty* t) {
   case ty::PointerTyID: return 32; // hey?
   default: return (log_err<std::logic_error>("cannot determine the type precedence."), 0);
   }
+}
+
+inline void rebase_int_pair(llvm::Value *&L, llvm::Value *&R) {
+  int pl = get_type_prec(L->getType()), pr = get_type_prec(R->getType());
+  if (pl < std::max(pl, pr))
+    L = g_builder.CreateSExt(L, ty::getIntNTy(g_context, std::max(pl, pr)));
+  if (pr < std::max(pl, pr))
+    R = g_builder.CreateSExt(R, ty::getIntNTy(g_context, std::max(pl, pr)));
 }
 
 class IOutputable {
@@ -574,9 +580,8 @@ public:
       default: break;
       }
     } else if (res_ty->isIntegerTy()) {
-      // L = g_builder.CreateIntCast(L, res_ty, true);
-      // R = g_builder.CreateIntCast(R, res_ty, true);
-      
+      L = g_builder.CreateIntCast(L, res_ty, true);
+      R = g_builder.CreateIntCast(R, res_ty, true);
       switch (op)
       {
       case '+':
@@ -711,8 +716,10 @@ public:
   virtual llvm::Value* codegen() override {
     g_bl_now.push(this);
 
+    llvm::Value* res = llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+
     for (auto &x:v) {
-      x->codegen();
+      res = x->codegen();
       if (instof<RetStmtNode>(*x))
         break; // ignore the following stmts.
     }
@@ -723,7 +730,7 @@ public:
 
     g_bl_now.pop();
 
-    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+    return res;
   }
   virtual std::string get_name() const override {
     return "block";
@@ -1058,42 +1065,89 @@ inline llvm::Function* get_func(std::string name) {
   return nullptr;
 }
 
-class AddressExprNode : public ExprNode {
+// class AddressExprNode : public ExprNode {
+//   expr_t operand;
+// public:
+//   AddressExprNode(expr_t operand) : operand(std::move(operand)) {  }
+//   virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerTo(); }
+//   virtual void output(std::ostream & os = std::cerr) override {
+//     os << "{ \"node_type\": \"AddressExpr\", \"operand\": \"";
+//     if (instof<FuncNode>(*operand))
+//       os << operand->get_name();
+//     else operand->output(os);
+//     os << "\" }";
+//   }
+
+//   virtual llvm::Value* codegen() override {
+//     return dynamic_cast<ILeftValue*>(operand.get())->codegen_left();
+//   }
+//   virtual std::string get_name() const override {
+//     return operand->get_name();
+//   }
+// };
+
+// class DisAddrExprNode : public ExprNode {
+//   expr_t operand;
+// public:
+//   DisAddrExprNode(expr_t operand) : operand(std::move(operand)) {  }
+//   virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerElementType(); }
+//   virtual void output(std::ostream & os = std::cerr) override {
+//     os << "{ \"node_type\": \"DisAddressExpr\", \"operand\": ";
+//     operand->output(os);
+//     os << " }";
+//   }
+//   virtual llvm::Value* codegen() override {
+//     return g_builder.CreateLoad(operand->codegen());
+//   }
+//   virtual std::string get_name() const override {
+//     return "DisAddr(" + operand->get_name() + ")";
+//   }
+// };
+
+class UnaryExprNode : public ExprNode {
+  char op;
   expr_t operand;
 public:
-  AddressExprNode(expr_t operand) : operand(std::move(operand)) {  }
-  virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerTo(); }
-  virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"AddressExpr\", \"operand\": \"";
-    if (instof<FuncNode>(*operand))
-      os << operand->get_name();
-    else operand->output(os);
-    os << "\" }";
+  UnaryExprNode(char op, expr_t operand) : op(op), operand(std::move(operand)) {  }
+  virtual llvm::Type* get_type() const override {
+    if (auto t = operand->get_type()) {
+      if (op == '*') {
+        if (t->isPointerTy())
+          return t->getPointerElementType();
+        else return log_err("invalid disaddress expression operand type!");
+      }
+      if (op == '&') return t->getPointerTo();
+      if (op == '!') return ty::getInt8Ty(g_context);
+      if (op == '~') return t;
+      return log_err("unknown unary operator.");
+    } else return log_err("invalid unary expression operand type!");
   }
 
-  virtual llvm::Value* codegen() override {
-    return dynamic_cast<ILeftValue*>(operand.get())->codegen_left();
-  }
-  virtual std::string get_name() const override {
-    return operand->get_name();
-  }
-};
-
-class DisAddrExprNode : public ExprNode {
-  expr_t operand;
-public:
-  DisAddrExprNode(expr_t operand) : operand(std::move(operand)) {  }
-  virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerElementType(); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"DisAddressExpr\", \"operand\": ";
+    os << "{ \"node_type\": \"UnaryExpr\", \"operator\": '"
+    << op << "', \"operand\": ";
     operand->output(os);
     os << " }";
   }
+
   virtual llvm::Value* codegen() override {
-    return g_builder.CreateLoad(operand->codegen());
+    auto t = operand->get_type();
+    switch (op) {
+      case '*': return g_builder.CreateLoad(operand->codegen());
+      case '&': return dynamic_cast<ILeftValue*>(operand.get())->codegen_left();
+      case '!':
+        if (t->isIntegerTy()) return g_builder.CreateICmpEQ(operand->codegen(), llvm::ConstantInt::get(t, 0));
+        else if (t->isDoubleTy()) return g_builder.CreateFCmpOEQ(operand->codegen(), llvm::ConstantFP::get(t, 0));
+        else return log_err("invalid logical not expression operand type!");
+      case '~':
+        if (!t->isIntegerTy()) return log_err("only integer can get bitwise not.");
+        return g_builder.CreateNot(operand->codegen());
+      default:
+        return log_err("unknown unary operator.");
+    }
   }
   virtual std::string get_name() const override {
-    return "DisAddr(" + operand->get_name() + ")";
+    return "UnaryExpression";
   }
 };
 

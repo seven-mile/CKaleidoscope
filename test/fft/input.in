@@ -1,0 +1,63 @@
+extern int printf(string fmt, ...);
+extern int scanf(string fmt, ...);
+extern char getchar();
+extern char putchar();
+extern bool isdigit(char ch);
+extern int puts(string str);
+extern int freopen_in(string file);
+extern int freopen_out(string file);
+
+inline int rd() {
+  int x=0,c,f=1;while(!isdigit(c=getchar()))if(c=='-')f=-1;
+  for(;isdigit(c);c=getchar())x=x*10+c-'0';return x*f;
+}
+const int N = 2e6+3, M = 998244353, G = 3;
+
+def int qpow(int a, int b=M-2) {
+  int r = 1;
+  for (; b; b=b>>1, a=1ll*a*a%M)
+    if (b&1) r=1ll*r*a%M;
+  return r;
+}
+
+def int st(int x) {
+  if (x>=M) x-=M; if (x<0) x+=M; return x;
+}
+
+int rev[2000003];
+
+def void it(int n) {
+  for (int i=1; i<n; i++)
+    rev[i] = (rev[i>>1]>>1)|((n>>1)*(i&1));
+}
+
+def void ntt(int *a, int n, int d) {
+  for (int i=0; i<n; i++) if(i<rev[i]) swap(a[i], a[rev[i]]);
+  for (int h=2; h<=n; h<<=1) {
+    int wn = qpow(G, (M-1)/h);
+    if (!~d) wn = qpow(wn);
+    for (int j=0; j<n; j+=h) {
+      int w = 1;
+      for (int k=j; k<j+(h>>1); k++, w=1ll*w*wn%M) {
+        int x = a[k], y = 1ll*w*a[k+(h>>1)]%M;
+        a[k] = st(x + y), a[k+(h>>1)] = st(x + M - y);
+      }
+    }
+  }
+  if (!~d) for (int i=0, j=qpow(n); i<n; i++) a[i]=1ll*a[i]*j%M;
+}
+
+int n, m, a[2000003], b[2000003];
+
+def int main() {
+  n = rd(), m = rd();
+  for (int i=0; i<=n; i++) a[i] = rd();
+  for (int i=0; i<=m; i++) b[i] = rd();
+  int lim = 1;
+  for (; lim <= n+m+1; lim<<=1);
+  it(lim);
+  ntt(a, lim, 1), ntt(b, lim, 1);
+  for (int i=0; i<lim; i++) a[i] = 1ll*a[i]*b[i]%M;
+  ntt(a, lim, -1);
+  for (int i=0; i<=n+m; i++) printf("%d ", a[i]);
+}
