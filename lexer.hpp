@@ -7,6 +7,7 @@
 #include <functional>
 #include <any>
 #include <llvm/IR/Type.h>
+#include <string>
 
 #include "global.hpp"
 #include "ioagent.hpp"
@@ -127,8 +128,8 @@ struct Token {
     return type == tok_kw_const;// || type == tok_kw_extern;
   }
 
-  bool is_tool(const char tool) const {
-    return type == tok_other && any_eq_char(val, tool);
+  bool is_tool(const std::string& tool) const {
+    return type == tok_other && std::any_cast<const std::string&>(val) == tool;
   }
 
   void print() const {
@@ -237,6 +238,12 @@ public:
       while(isdigit(!file) || ~file == '.' || ~file == 'e'
             || (tmp_str.back() == 'e' && ~file == '-'));
 
+      size_t cnt_ch[2] {};
+      for (; ~file=='l' || ~file=='u'; !file)
+        cnt_ch[~file=='l']++;
+      if (cnt_ch[0] > 1) throw syntax_error("unsigned literal suffix shouldn't appear more than one time.");
+      if (cnt_ch[1] > 2) throw syntax_error("long literal suffix shouldn't appear more than two times.");
+      
       upd();
 
       if (tmp_str == "...")
@@ -256,10 +263,12 @@ public:
           throw syntax_error("invalid literal float number.");
       }
       if (verify_dot || verify_e) return { tok_lit_num, strtod(tmp_str.c_str(), nullptr) };
-      else return { tok_lit_num, atoi(tmp_str.c_str()) };
+      else {
+        if (cnt_ch[1] == 2) return { tok_lit_num, (int64_t)atoll(tmp_str.c_str()) };
+        return { tok_lit_num, atoi(tmp_str.c_str()) };
+      }
     }
-
-    if (~file == '#') {
+    if (~file == '/' && file.peek() == '/') {
       while (!file != EOF && ~file != '\n' && ~file != '\r');
 
       if (~file != EOF) return get_token();
@@ -267,7 +276,7 @@ public:
 
     if (~file == '\'') {
       char vch = !file, lch = !file;
-      if (lch != '\'') throw zMile::syntax_error("no ending \' character.");
+      if (lch != '\'') throw syntax_error("no ending \' character.");
       !file;
       upd();
       return { tok_lit_char, vch };
@@ -294,7 +303,7 @@ public:
       }
       upd();
       if (~file == '\"') { !file; return { tok_lit_string, tmp_str }; }
-      throw zMile::syntax_error("no ending \" character.");
+      throw syntax_error("no ending \" character.");
     }
 
     if (~file == EOF) return tok_eof;
@@ -307,21 +316,34 @@ public:
       if (tmp_ch == '+') { !file; return tok_addadd; }
       if (tmp_ch == '-') { !file; return tok_subsub; }
     }
+    if ((tmp_ch == '+' || tmp_ch == '-') && ~file == '=')
+      { !file; return { tok_other, tmp_ch + std::string("=") }; }
     
     // bit operators
-    // if (tmp_ch == '<') if (~file == '<')
-    //   { !file; return { tok_other, '<' }; }
+    if (tmp_ch == '<') if (~file == '<') {
+      if (!file == '=') { !file; return { tok_other, std::string("<<=") }; }
+      else return { tok_other, std::string("<<") };
+    } if (tmp_ch == '>') if (~file == '>') {
+      if (!file == '=') { !file; return { tok_other, std::string(">>=") }; }
+      else return { tok_other, std::string(">>") };
+    } if (tmp_ch == '&') if (~file == '&') {
+      if (!file == '=') { !file; return { tok_other, std::string("&&=") }; }
+      else return { tok_other, std::string("&&") };
+    } if (tmp_ch == '|') if (~file == '|') {
+      if (!file == '=') { !file; return { tok_other, std::string("||=") }; }
+      else return { tok_other, std::string("||") };
+    }
     
     // comparison
     if (tmp_ch == '<' || tmp_ch == '>') if (~file == '=')
-      { !file; return { tok_other, char(-tmp_ch) }; }
+      { !file; return { tok_other, tmp_ch + std::string("=") }; }
 
     if (tmp_ch == '=') if (~file == '=')
-      { !file; return { tok_other, '@' }; }
+      { !file; return { tok_other, std::string("==") }; }
     if (tmp_ch == '!') if (~file == '=')
-      { !file; return { tok_other, char(-'@') }; }
+      { !file; return { tok_other, std::string("!=") }; }
 
-    return { tok_other, tmp_ch };
+    return { tok_other, std::string("") + tmp_ch };
   }
 
 };

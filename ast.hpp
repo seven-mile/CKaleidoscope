@@ -60,6 +60,14 @@ inline void output_list(const std::vector<T>& v,
   os << " ]";
 }
 
+template <class T>
+inline std::string textize_object(T* x) {
+  std::string s = "";
+  llvm::raw_string_ostream os(s);
+  os << *x;
+  return os.str();
+}
+
 // print "\n" as "\\n"
 inline std::string get_raw_string(std::string str) {
   for (auto it = str.begin(); it < str.end(); it++)
@@ -72,13 +80,21 @@ inline std::string get_raw_string(std::string str) {
   return str;
 }
 
+inline llvm::ConstantInt* get_const_int_value(int64_t v, int b = 32) {
+  return llvm::ConstantInt::get(g_context, llvm::APInt(b, v));
+}
+
+inline llvm::Constant* get_const_double_value(double v) {
+  return llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), v);
+}
+
 inline llvm::Constant* get_default_value(tag_tok t) {
   static llvm::Constant
-    *bl = llvm::ConstantInt::get(g_context, llvm::APInt(1, 0)),
-    *ch = llvm::ConstantInt::get(g_context, llvm::APInt(8, 0)),
-    *it = llvm::ConstantInt::get(g_context, llvm::APInt(32, 0)),
+    *bl = get_const_int_value(0, 1),
+    *ch = get_const_int_value(0, 8),
+    *it = get_const_int_value(0),
     *st = llvm::ConstantPointerNull::get(llvm::Type::getInt8PtrTy(g_context)),
-    *db = llvm::ConstantFP::get(g_context, llvm::APFloat(.0));
+    *db = get_const_double_value(0);
 
   switch (t) {
   case tok_kw_bool:
@@ -107,7 +123,7 @@ inline llvm::Constant* get_const_value_as(llvm::Type* ty, llvm::Value *I) {
     if (I->getType()->isIntegerTy()) {
       auto CI = llvm::dyn_cast<llvm::ConstantInt>(I);
       if (ty->isDoubleTy())
-        return llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), llvm::APFloat(CI->getValue().bitsToDouble()));
+        return get_const_double_value(CI->getValue().bitsToDouble());
       else if (ty->isIntegerTy() && ty->getIntegerBitWidth() >= I->getType()->getIntegerBitWidth())
         return CI;
       else return log_err("no available converter for the global variable initializer.");
@@ -222,13 +238,6 @@ typedef struct Var {
   std::string name;
   llvm::Type* type;
 
-  Var(const std::string& name, zMile::tag_tok tok) : name(name)
-  {
-    if (!tok_is_type(tok))
-      assert(log_err<std::logic_error>("type error: invalid type assigned to the variable."));
-    type = get_type_of_tok(tok);
-  }
-
   Var(const std::string& name, llvm::Type* type) : name(name), type(type) {  }
 
   std::string get_type_name() const {
@@ -272,21 +281,24 @@ class NumExprNode : public ExprNode {
 public:
   NumExprNode(std::any val) : val(val) {  }
   virtual llvm::Type* get_type() const override {
-    return val.type() == typeid(int) ? ty::getInt32Ty(g_context) : ty::getDoubleTy(g_context);
+    if (val.type() == typeid(int)) return ty::getInt32Ty(g_context);
+    else if (val.type() == typeid(int64_t)) return ty::getInt64Ty(g_context);
+    else if (val.type() == typeid(double)) return ty::getDoubleTy(g_context);
+    else return log_err("invalid val type.");
   }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"NumExpr\", \"val\": ";
     print_any(val);
-    os << ", \"val_type\": \"" << (val.type() == typeid(int) ? "int" : "double") << "\"";
+    os << ", \"val_type\": \"" << textize_object(get_type()) << "\"";
     os << " }";
   }
   virtual llvm::Value* codegen() override {
     if (val.type() == typeid(double))
-      return llvm::ConstantFP::get(g_context, llvm::APFloat(std::any_cast<double>(val)));
+      return get_const_double_value(std::any_cast<double>(val));
     if (val.type() == typeid(int))
-      return llvm::ConstantInt::get(g_context, llvm::APInt(32, std::any_cast<int>(val)));
+      return get_const_int_value(std::any_cast<int>(val), 32);
     if (val.type() == typeid(int64_t))
-      return llvm::ConstantInt::get(g_context, llvm::APInt(64, std::any_cast<int64_t>(val)));
+      return get_const_int_value(std::any_cast<int64_t>(val), 64);
     return log_err<std::invalid_argument>("invalid val type.");
   }
   virtual std::string get_name() const override {
@@ -307,7 +319,7 @@ public:
     os << "{ \"node_type\": \"CharExpr\", \"val\": '" << val << "' }";
   }
   virtual llvm::Value* codegen() override {
-    return llvm::ConstantInt::get(g_context, llvm::APInt(/* nBits: */8, val));
+    return get_const_int_value(val, 8);
   }
   virtual std::string get_name() const override {
     return std::string("") + val;
@@ -342,7 +354,7 @@ public:
     os << "{ \"node_type\": \"BoolExpr\", \"val\": " << (val ? "true" : "false") << " }";
   }
   virtual llvm::Value* codegen() override {
-    return llvm::ConstantInt::get(g_context, llvm::APInt(1, val));
+    return get_const_int_value(val, 1);
   }
   virtual std::string get_name() const override {
     return val ? "true" : "false";
@@ -355,9 +367,7 @@ class VarExprNode : public LeftExprNode {
 public:
   VarExprNode(const std::string &id) : id(id) {  }
   virtual llvm::Type* get_type() const override {
-    auto tt = codegen_left()->getType();
-    assert(tt->isPointerTy());
-    return tt->isPointerTy() ? tt->getPointerElementType() : tt;
+    return codegen_left()->getType()->getPointerElementType();
   }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"VarExpr\", \"id\": \"" << id << "\" }";
@@ -366,7 +376,9 @@ public:
   virtual llvm::Value* codegen() override {
     auto ptr = codegen_left();
     if (!ptr) return nullptr;
-    return g_builder.CreateLoad(ptr, id);
+    if (ptr->getType()->getPointerElementType()->isArrayTy())
+      return g_builder.CreateGEP(ptr, {get_const_int_value(0), get_const_int_value(0)});
+    else return g_builder.CreateLoad(ptr, id);
   }
 
   virtual llvm::Value* codegen_left() const override {
@@ -383,7 +395,12 @@ class SubScriptExprNode : public LeftExprNode {
   expr_t idx;
 public:
   SubScriptExprNode(left_t arr, expr_t idx) : arr(std::move(arr)), idx(std::move(idx)) {  }
-  virtual llvm::Type* get_type() const override { return arr->get_type()->getArrayElementType(); }
+  virtual llvm::Type* get_type() const override {
+    auto t = arr->get_type();
+    if (t->isArrayTy()) return t->getArrayElementType();
+    if (t->isPointerTy()) return t->getPointerElementType();
+    return log_err("subscript expreesion type can't be determined.");
+  }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"SubScriptExprNode\", \"arr\": ";
     arr->output();
@@ -398,16 +415,22 @@ public:
     return v;
   }
   virtual llvm::Value* codegen_left() const override {
-    auto ptr = arr->codegen_left();
+    auto ptr = arr->get_type()->isArrayTy()
+                  ? arr->codegen_left() : arr->codegen();
     if (!ptr) return nullptr;
     auto pos = idx->codegen();
     if (!pos) return nullptr;
     
+    if (pos->getType()->isDoubleTy())
+      g_builder.CreateFPToUI(pos, llvm::Type::getInt32Ty(g_context));
+
     llvm::ArrayRef<llvm::Value*> arr_pos = {
-      llvm::ConstantInt::get(g_context, llvm::APInt(32, 0)), // dereference
-      g_builder.CreateFPToUI(pos, llvm::Type::getInt32Ty(g_context))
+      get_const_int_value(0), // dereference
+      pos
     };
-    return g_builder.CreateGEP(ptr, arr_pos);
+    if (arr->get_type()->isArrayTy())
+      return g_builder.CreateGEP(ptr, arr_pos);
+    else return g_builder.CreateGEP(ptr, pos);
   }
   virtual std::string get_name() const override {
     return "SubScript(" + arr->get_name() + ")";
@@ -450,7 +473,7 @@ public:
       { // global
 
         if (g_named_values.find(v.name) != g_named_values.end()
-            || !g_named_values[v.name].empty())
+            && !g_named_values[v.name].empty())
           throw syntax_error("global variable name has been occupied.");
         
         auto A = new llvm::GlobalVariable(*g_module, v.type, is_const,
@@ -466,7 +489,10 @@ public:
           // for possible cast
           if (I) {
             auto p1 = get_type_prec(I->getType()), p2 = get_type_prec(v.type);
-            if (p1 > p2) return log_err("the initial value type is not capable for the variable.");
+            if (p1 > p2) {
+              if (p1 == 0x3f3f3f3fu) return log_err("the initial value type is not capable for the variable.");
+              else I = g_builder.CreateTrunc(I, v.type);
+            }
             if (I->getType()->isIntegerTy() && v.type->isDoubleTy())
               I = g_builder.CreateSIToFP(I, v.type);
           }
@@ -491,11 +517,11 @@ public:
 };
 
 class BinExprNode : public ExprNode {
-  char op;
+  std::string op;
   expr_t left, right;
 
 public:
-  BinExprNode(char op, expr_t left,
+  BinExprNode(std::string op, expr_t left,
     expr_t right) : op(op),
     left(std::move(left)), right(std::move(right)) {  }
 
@@ -506,16 +532,13 @@ public:
   }
   
   virtual llvm::Type* get_type() const override {
-    if (abs(op) == '>' || abs(op) == '<')
+    if (op == ">" || op == "<" || op == "||" || op == "&&" || op == "<=" || op == ">=")
       return ty::getInt1Ty(g_context);
     return get_max_type();
   }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    std::string op_display;
-    if (op < 0) op_display = -op, op_display += '=';
-    else op_display = op;
-    os << "{ \"node_type\": \"BinExpr\", \"operator\": \"" << op_display << "\", \"left\": ";
+    os << "{ \"node_type\": \"BinExpr\", \"operator\": \"" << op << "\", \"left\": ";
     left->output();
     os << ", \"right\": ";
     right->output();
@@ -524,9 +547,8 @@ public:
 
   virtual llvm::Value* codegen() override {
     // special for assignment
-    if (op == '=') {
+    if (op == "=") {
       auto p1 = get_type_prec(left->get_type()), p2 = get_type_prec(right->get_type());
-      if (p1 < p2) return log_err("invalid assignment!");
 
       auto R = right->codegen();
 
@@ -536,6 +558,11 @@ public:
 
       if (left->get_type()->isDoubleTy() && right->get_type()->isIntegerTy())
         R = g_builder.CreateSIToFP(R, left->get_type());
+
+      if (p1 < p2) {
+        if (p2 == 0x3f3f3f3fu) return log_err("invalid assignment!");
+        else R = g_builder.CreateTrunc(R, left->get_type());
+      }
 
       g_builder.CreateStore(R, L);
       // the value of assignment is rhs
@@ -549,65 +576,90 @@ public:
     // get_type();
     
     if (res_ty->isDoubleTy()) {
+
       if (L->getType()->isIntegerTy())
         L = g_builder.CreateSIToFP(L, res_ty);
       if (R->getType()->isIntegerTy())
         R = g_builder.CreateSIToFP(R, res_ty);
-      switch (op)
-      {
-      case '+':
-        return g_builder.CreateFAdd(L, R, "add");
-      case '-':
-        return g_builder.CreateFSub(L, R, "sub");
-      case '*':
-        return g_builder.CreateFMul(L, R, "mul");
-      case '/':
-        return g_builder.CreateFDiv(L, R, "div");
-      case '%':
-        return g_builder.CreateFRem(L, R, "mod");
-      case '<':
-        return g_builder.CreateFCmpULT(L, R, "lt");
-      case '>':
-        return g_builder.CreateFCmpUGT(L, R, "gt");
-      case -'<':
-        return g_builder.CreateFCmpULE(L, R, "le");
-      case -'>':
-        return g_builder.CreateFCmpUGE(L, R, "ge");
-      case '@':
-        return g_builder.CreateFCmpUEQ(L, R, "ueq");
-      case -'@':
-        return g_builder.CreateFCmpUNE(L, R, "une");
-      default: break;
-      }
+
+      if (op == "+") return g_builder.CreateFAdd(L, R, "add");
+      else if (op == "-") return g_builder.CreateFSub(L, R, "sub");
+      else if (op == "*") return g_builder.CreateFMul(L, R, "mul");
+      else if (op == "/") return g_builder.CreateFDiv(L, R, "div");
+      else if (op == "%") return g_builder.CreateFRem(L, R, "mod");
+      else if (op == "<") return g_builder.CreateFCmpULT(L, R, "lt");
+      else if (op == ">") return g_builder.CreateFCmpUGT(L, R, "gt");
+      else if (op == "<=") return g_builder.CreateFCmpULE(L, R, "le");
+      else if (op == ">=") return g_builder.CreateFCmpUGE(L, R, "ge");
+      else if (op == "==") return g_builder.CreateFCmpUEQ(L, R, "ueq");
+      else if (op == "!=") return g_builder.CreateFCmpUNE(L, R, "une");
+      else if (op == "+=") return g_builder.CreateStore(g_builder.CreateFAdd(L, R, "add"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "-=") return g_builder.CreateStore(g_builder.CreateFSub(L, R, "sub"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "*=") return g_builder.CreateStore(g_builder.CreateFMul(L, R, "mul"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "/=") return g_builder.CreateStore(g_builder.CreateFDiv(L, R, "div"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "%=") return g_builder.CreateStore(g_builder.CreateFRem(L, R, "mod"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+
     } else if (res_ty->isIntegerTy()) {
+
       L = g_builder.CreateIntCast(L, res_ty, true);
       R = g_builder.CreateIntCast(R, res_ty, true);
-      switch (op)
-      {
-      case '+':
-        return g_builder.CreateAdd(L, R, "add");
-      case '-':
-        return g_builder.CreateSub(L, R, "sub");
-      case '*':
-        return g_builder.CreateMul(L, R, "mul");
-      case '/':
-        return g_builder.CreateSDiv(L, R, "div");
-      case '%':
-        return g_builder.CreateSRem(L, R, "mod");
-      case '<':
-        return g_builder.CreateICmpULT(L, R, "lt");
-      case '>':
-        return g_builder.CreateICmpUGT(L, R, "gt");
-      case -'<':
-        return g_builder.CreateICmpULE(L, R, "le");
-      case -'>':
-        return g_builder.CreateICmpUGE(L, R, "ge");
-      case '@':
-        return g_builder.CreateICmpEQ(L, R, "eq");
-      case -'@':
-        return g_builder.CreateICmpNE(L, R, "ne");
-      default: break;
-      }
+
+      if (op == "+") return g_builder.CreateAdd(L, R, "add");
+      else if (op == "-") return g_builder.CreateSub(L, R, "sub");
+      else if (op == "*") return g_builder.CreateMul(L, R, "mul");
+      else if (op == "/") return g_builder.CreateSDiv(L, R, "div");
+      else if (op == "%") return g_builder.CreateSRem(L, R, "mod");
+      else if (op == "<") return g_builder.CreateICmpSLT(L, R, "lt");
+      else if (op == ">") return g_builder.CreateICmpSGT(L, R, "gt");
+      else if (op == "<=") return g_builder.CreateICmpSLE(L, R, "le");
+      else if (op == ">=") return g_builder.CreateICmpSGE(L, R, "ge");
+      else if (op == "==") return g_builder.CreateICmpEQ(L, R, "eq");
+      else if (op == "!=") return g_builder.CreateICmpNE(L, R, "ne");
+      else if (op == "&") return g_builder.CreateAnd(L, R, "and");
+      else if (op == "|") return g_builder.CreateOr (L, R, "or");
+      else if (op == "^") return g_builder.CreateXor(L, R, "xor");
+      else if (op == "&&") return g_builder.CreateAnd(
+          g_builder.CreateICmpNE(L, get_const_int_value(0, L->getType()->getIntegerBitWidth())),
+          g_builder.CreateICmpNE(R, get_const_int_value(0, L->getType()->getIntegerBitWidth())),
+          "and"
+        );
+      else if (op == "||") return g_builder.CreateOr(
+          g_builder.CreateICmpNE(L, get_const_int_value(0, R->getType()->getIntegerBitWidth())),
+          g_builder.CreateICmpNE(R, get_const_int_value(0, R->getType()->getIntegerBitWidth())),
+          "or"
+        );
+      else if (op == "<<") return g_builder.CreateShl(L, R, "shl");
+      else if (op == ">>") return g_builder.CreateLShr(L, R, "shr");
+
+      else if (op == "+=") return g_builder.CreateStore(g_builder.CreateAdd(L, R, "add"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "-=") return g_builder.CreateStore(g_builder.CreateSub(L, R, "sub"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "*=") return g_builder.CreateStore(g_builder.CreateMul(L, R, "mul"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "/=") return g_builder.CreateStore(g_builder.CreateSDiv(L, R, "div"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "%=") return g_builder.CreateStore(g_builder.CreateSRem(L, R, "mod"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+
+      else if (op == "&=") return g_builder.CreateStore(g_builder.CreateAnd(L, R, "and"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "|=") return g_builder.CreateStore(g_builder.CreateOr (L, R, "or"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "^=") return g_builder.CreateStore(g_builder.CreateXor(L, R, "xor"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+
+      else if (op == "<<=") return g_builder.CreateStore(g_builder.CreateShl(L, R, "shl"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == ">>=") return g_builder.CreateStore(g_builder.CreateLShr(L, R, "shr"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+
+
     }
 
     return log_err("invalid binary operator.");
@@ -649,7 +701,10 @@ public:
       if (!V) return nullptr;
       if (!l_func->isVarArg()) {
         auto p1 = get_type_prec(V->getType()), p2 = get_type_prec(it->getType());
-        if (p1 > p2) return log_err("the param value type is not capable for the argument.");
+        if (p1 > p2) {
+          if (p1 == 0x3f3f3f3fu) return log_err("the param value type is not capable for the argument.");
+          else V = g_builder.CreateTrunc(V, it->getType());
+        }
         if (V->getType()->isIntegerTy() && it->getType()->isDoubleTy())
           V = g_builder.CreateSIToFP(V, it->getType());
         it++;
@@ -688,7 +743,10 @@ public:
     if (ret_ty->isVoidTy())
       return g_builder.CreateRetVoid();
     auto p1 = get_type_prec(val->get_type()), p2 = get_type_prec(ret_ty);
-    if (p1 > p2) return log_err("return value type is not capable for the function.");
+    if (p1 > p2) {
+      if (p1 == 0x3f3f3f3fu) return log_err("return value type is not capable for the function.");
+      else V = g_builder.CreateTrunc(V, ret_ty);
+    }
     if (ret_ty->isDoubleTy() && val->get_type()->isIntegerTy())
       V = g_builder.CreateSIToFP(V, ret_ty);
 
@@ -998,7 +1056,7 @@ public:
     for (auto& arg: fun->args()) {
       extra_pop.push_back(arg.getName());
       auto alloca = create_alloca_in_entry(
-          fun, Var { arg.getName(), get_tok_of_type(arg.getType()) });
+          fun, Var { arg.getName(), arg.getType() });
       g_builder.CreateStore(&arg, alloca);
       g_named_values[arg.getName()].push(alloca);
     }
@@ -1011,7 +1069,7 @@ public:
         create_alloca_in_entry(
           fun,   Var {
           "__return_value",
-          get_tok_of_type(ret_ty)
+          ret_ty
         });
       
       g_named_values["__return_value"].push(var_ret);
@@ -1065,46 +1123,7 @@ inline llvm::Function* get_func(std::string name) {
   return nullptr;
 }
 
-// class AddressExprNode : public ExprNode {
-//   expr_t operand;
-// public:
-//   AddressExprNode(expr_t operand) : operand(std::move(operand)) {  }
-//   virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerTo(); }
-//   virtual void output(std::ostream & os = std::cerr) override {
-//     os << "{ \"node_type\": \"AddressExpr\", \"operand\": \"";
-//     if (instof<FuncNode>(*operand))
-//       os << operand->get_name();
-//     else operand->output(os);
-//     os << "\" }";
-//   }
-
-//   virtual llvm::Value* codegen() override {
-//     return dynamic_cast<ILeftValue*>(operand.get())->codegen_left();
-//   }
-//   virtual std::string get_name() const override {
-//     return operand->get_name();
-//   }
-// };
-
-// class DisAddrExprNode : public ExprNode {
-//   expr_t operand;
-// public:
-//   DisAddrExprNode(expr_t operand) : operand(std::move(operand)) {  }
-//   virtual llvm::Type* get_type() const override { return operand->get_type()->getPointerElementType(); }
-//   virtual void output(std::ostream & os = std::cerr) override {
-//     os << "{ \"node_type\": \"DisAddressExpr\", \"operand\": ";
-//     operand->output(os);
-//     os << " }";
-//   }
-//   virtual llvm::Value* codegen() override {
-//     return g_builder.CreateLoad(operand->codegen());
-//   }
-//   virtual std::string get_name() const override {
-//     return "DisAddr(" + operand->get_name() + ")";
-//   }
-// };
-
-class UnaryExprNode : public ExprNode {
+class UnaryExprNode : public LeftExprNode {
   char op;
   expr_t operand;
 public:
@@ -1145,6 +1164,10 @@ public:
       default:
         return log_err("unknown unary operator.");
     }
+  }
+  virtual llvm::Value* codegen_left() const override {
+    if (op == '*') return operand->codegen();
+    else return log_err<std::logic_error>("this unary expression is not left value.");
   }
   virtual std::string get_name() const override {
     return "UnaryExpression";

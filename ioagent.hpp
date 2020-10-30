@@ -20,7 +20,7 @@ public:
   std::istream& get_stream() { return file; }
 
   char operator~() { return last_char; }
-  char operator!() { return his.push_back(last_char = file.get()), last_char; }
+  char operator!() { if (his.size() >= 1000) his.clear(); return his.push_back(last_char = file.get()), last_char; }
   char peek() { return file.peek(); }
   void reset() { last_char = ' '; }
 };

@@ -7,6 +7,7 @@
 #include "jit.hpp"
 #include "lexer.hpp"
 #include "optimizer.hpp"
+#include <algorithm>
 #include <any>
 #include <cassert>
 #include <cstddef>
@@ -19,16 +20,29 @@
 
 namespace zMile {
 
-// non-const
-std::map<char, int> map_op_prior
+std::map<std::string, int> op_precedence
 {
-  {'=', 2},
-  {'<', 5}, {'>', 5},
-  {-'<', 5}, {-'>', 5}, // <= and >=
-  {'@', 5}, {-'@', 5}, // == and !=
-  {'+', 10}, {'-', 10},
-  {'*', 20}, {'/', 20}, {'%', 20},
+  // {',', 1},
+  {"=", 2},
+  {"+=", 2}, {"-=", 2}, // += -=
+  {"*=", 2}, {"/=", 2}, {"%=", 2}, // *= /= %=
+  {"<<=", 2}, {">>=", 2}, // <<= >>=
+  {"^=", 2}, {"&=", 2}, // ^= &=
+
+  {"||", 3}, // ||
+  {"&&", 4}, // &&
+  {"|", 5},
+  {"^", 6},
+  {"&", 7},
+  {"==", 8}, {"!=", 8}, // == and !=
+  {"<", 9}, {">", 9},
+  {"<=", 9}, {">=", 9}, // <= and >=
+  {"<<", 11}, {">>", 11}, // 9 = '(' = '<<', 0 = ')' = '>>'
+  {"+", 12}, {"-", 12},
+  {"*", 13}, {"/", 13}, {"%", 13},
 };
+
+const int unary_precedence = 16;
 
 class Parser {
   Lexer& lex;
@@ -36,10 +50,10 @@ class Parser {
 
   inline void adv() { cur_tok = lex.get_token(); }
   inline int get_cur_prior() {
-    if (cur_tok.type != tok_other || cur_tok.val.type() != typeid(char))
+    if (cur_tok.type != tok_other || cur_tok.val.type() != typeid(std::string))
       return -1; // always pass
-    
-    int res = map_op_prior[std::any_cast<char>(cur_tok.val)];
+
+    int res = op_precedence[std::any_cast<std::string>(cur_tok.val)];
     if (res <= 0) return -1;
     return res;
   }
@@ -60,20 +74,19 @@ public:
 
   node_t parse_str() {
     node_t ptr = std::make_unique<StringExprNode>(
-      EXT_STR_ANY(cur_tok.val));
+      std::any_cast<const std::string&>(cur_tok.val));
     return adv(), std::move(ptr);
   }
 
   node_t parse_paren() {
-    adv();
+    adv(); // (
     node_t expr = parse_expr();
     if (!expr) return nullptr;
 
-    if (cur_tok.val.type() == typeid(char) && 
-      std::any_cast<char>(cur_tok.val) != ')')
+    if (!cur_tok.is_tool(")"))
       return log_err("unexpected token, expected ')'.");
 
-    adv();
+    adv(); // )
     
     return expr;
   }
@@ -82,30 +95,30 @@ public:
     if (!arr) return log_err<object_invalid>("the argument array is invalid!");
     adv(); // '['
     auto idx = parse_expr();
-    if (!cur_tok.is_tool(']'))
+    if (!cur_tok.is_tool("]"))
       return log_err("unexpected token, expected ']'.");
     adv(); // ']'
     return std::make_unique<SubScriptExprNode>(std::move(arr), std::move(idx));
   }
 
   node_t parse_id() {
-    std::string cur_id = EXT_STR_ANY(cur_tok.val);
+    std::string cur_id = std::any_cast<const std::string&>(cur_tok.val);
     adv();
 
-    if (cur_tok.is_tool('('))
+    if (cur_tok.is_tool("("))
     {
       // go on to parse call expr
       adv();
       std::vector<node_t> args;
-      if (!cur_tok.is_tool(')'))
+      if (!cur_tok.is_tool(")"))
         while (1) {
           if (node_t arg = parse_expr())
             args.push_back(std::move(arg));
           else return nullptr; // having thrown
 
-          if (cur_tok.is_tool(')'))
+          if (cur_tok.is_tool(")"))
             break;
-          if (!cur_tok.is_tool(','))
+          if (!cur_tok.is_tool(","))
             log_err("unexpected token, expected ',' or ')'.");
           
           adv();
@@ -117,7 +130,7 @@ public:
 
     left_t L = std::make_unique<VarExprNode>(cur_id);
 
-    while (cur_tok.is_tool('['))
+    while (cur_tok.is_tool("["))
       L = parse_subscr(std::move(L));
     
     if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
@@ -144,7 +157,7 @@ public:
   }
 
   node_t parse_prim(bool hasSign = false) {
-    if (cur_tok.is_tool(';'))
+    if (cur_tok.is_tool(";"))
       return std::make_unique<NullStmt>();
     if (cur_tok.type == tok_id)
       return parse_id();
@@ -175,28 +188,28 @@ public:
     }
     if (cur_tok.is_type() || cur_tok.is_spec())
       return parse_dvar();
-    if (cur_tok.is_tool('('))
+    if (cur_tok.is_tool("("))
       return parse_paren();
-    if (cur_tok.is_tool('{'))
+    if (cur_tok.is_tool("{"))
       return parse_block();
     
-    if (cur_tok.is_tool('&'))
+    if (cur_tok.is_tool("&"))
       return parse_addr();
-    if (cur_tok.is_tool('*'))
-      return adv(), std::make_unique<UnaryExprNode>('*', parse_expr());
-    if (cur_tok.is_tool('!'))
-      return adv(), std::make_unique<UnaryExprNode>('!', parse_expr());
-    if (cur_tok.is_tool('~'))
-      return adv(), std::make_unique<UnaryExprNode>('~', parse_expr());
+    if (cur_tok.is_tool("*"))
+      return adv(), std::make_unique<UnaryExprNode>('*', parse_expr(unary_precedence));
+    if (cur_tok.is_tool("!"))
+      return adv(), std::make_unique<UnaryExprNode>('!', parse_expr(unary_precedence));
+    if (cur_tok.is_tool("~"))
+      return adv(), std::make_unique<UnaryExprNode>('~', parse_expr(unary_precedence));
 
     if (!hasSign && cur_tok.type == tok_other) {
-      if (cur_tok.is_tool('+')) {
+      if (cur_tok.is_tool("+")) {
         auto expr = (adv(), parse_prim(true));
         return expr;
       }
-      if (cur_tok.is_tool('-')) {
+      if (cur_tok.is_tool("-")) {
         auto expr = (adv(), parse_prim(true));
-        return std::make_unique<BinExprNode>('*', std::make_unique<NumExprNode>(-1), std::move(expr));
+        return std::make_unique<BinExprNode>("*", std::make_unique<NumExprNode>(-1), std::move(expr));
       }
     }
     return log_err("identify expr token failed.");
@@ -208,11 +221,11 @@ public:
   // r_b = 1 ==> (for function) brace is necessary
   block_t parse_block(bool require_brace = false) {
     std::vector<stmt_t> v;
-    if (cur_tok.is_tool('{')) {
+    if (cur_tok.is_tool("{")) {
       adv();
       while (1) {
         if (cur_tok.type == tok_other
-            && cur_tok.is_tool('}'))
+            && cur_tok.is_tool("}"))
           { adv(); break; }
         v.push_back(parse_stmt());
       }
@@ -233,7 +246,7 @@ public:
       if (pr < oppr) return lhs;
 
       // it must be a binop
-      char op = std::any_cast<char>(cur_tok.val);
+      auto op = std::any_cast<const std::string &>(cur_tok.val);
       adv();
       node_t rhs = parse_prim();
       if (!rhs) return nullptr;
@@ -248,7 +261,6 @@ public:
         rhs = parse_binrhs(pr+1, std::move(rhs));
         if (!rhs) return nullptr;
       }
-
       lhs = std::make_unique<BinExprNode>(op, std::move(lhs), std::move(rhs));
     }
   }
@@ -263,36 +275,39 @@ public:
     adv();
     if (cur_tok.type != tok_id)
       return log_err("unexpected token, expected an identifier.");
-    std::string id = EXT_STR_ANY(cur_tok.val);
+    std::string id = std::any_cast<const std::string&>(cur_tok.val);
     
     adv();
-    if (std::any_cast<char>(cur_tok.val) != '(')
+    if (!cur_tok.is_tool("("))
       return log_err("unexpected token, expected '('.");
     
     adv();
     std::vector<Argu> args;
     bool varargs = false;
 
-    if (!cur_tok.is_tool(')'))
+    if (!cur_tok.is_tool(")"))
       while(1) {
         if (cur_tok.type == tok_varargs) {
           varargs = true;
           adv();
-          if (!cur_tok.is_tool(')'))
+          if (!cur_tok.is_tool(")"))
             return log_err("unexpected token, the prototype should end after var args.");
           break;
         }
 
         if (!cur_tok.is_type())
           return log_err("unexpected token, expected a type name.");
-        auto arg_ty = cur_tok.type;
+        auto arg_ty = get_type_of_tok(cur_tok.type);
         adv();
+        for (; cur_tok.is_tool("*"); adv())
+          arg_ty = arg_ty->getPointerTo();
+        
         if (cur_tok.type != tok_id)
           return log_err("unexpected token, expected an arg name.");
-        args.emplace_back(EXT_STR_ANY(cur_tok.val), arg_ty);
+        args.emplace_back(std::any_cast<const std::string&>(cur_tok.val), arg_ty);
         adv();
-        if (cur_tok.is_tool(')')) break;
-        if (!cur_tok.is_tool(','))
+        if (cur_tok.is_tool(")")) break;
+        if (!cur_tok.is_tool(","))
           return log_err("unexpected token, expected ',' or ')'.");
         adv();
       }
@@ -328,7 +343,7 @@ public:
       return log_err("unexpected token, expected the keyword if.");
     adv(); // cond
 
-    if (cur_tok.type != tok_other || !cur_tok.is_tool('('))
+    if (cur_tok.type != tok_other || !cur_tok.is_tool("("))
       return log_err("unexpected token, expected the token '('.");
     adv(); // '('
 
@@ -336,7 +351,7 @@ public:
     cond = parse_expr();
     if (!cond) return nullptr;
 
-    if (cur_tok.type != tok_other || !cur_tok.is_tool(')'))
+    if (cur_tok.type != tok_other || !cur_tok.is_tool(")"))
       return log_err("unexpected token, expected the token ')'.");
     adv(); // ')'
     
@@ -354,7 +369,7 @@ public:
 
   node_t parse_for() {
     adv(); // for
-    if (!cur_tok.is_tool('('))
+    if (!cur_tok.is_tool("("))
       log_err("unexpected token, expected the token '('");
     
     adv(); // (
@@ -368,15 +383,15 @@ public:
     if (instof<NullStmt*>(cond.get()))
       cond = std::make_unique<BoolExprNode>(true);
 
-    if (!cur_tok.is_tool(';'))
+    if (!cur_tok.is_tool(";"))
       log_err("unexpected token, expected the token ';'");
     
     adv(); // ;
 
-    stmt_t every = cur_tok.is_tool(')') ? std::make_unique<NullStmt>() : parse_stmt();
+    stmt_t every = cur_tok.is_tool(")") ? std::make_unique<NullStmt>() : parse_stmt();
     if (!every) return nullptr;
 
-    if (!cur_tok.is_tool(')'))
+    if (!cur_tok.is_tool(")"))
       log_err("unexpected token, expected the token ')'");    
     
     adv();
@@ -389,7 +404,7 @@ public:
 
   node_t parse_while() {
     adv(); // while
-    if (!cur_tok.is_tool('('))
+    if (!cur_tok.is_tool("("))
       log_err("unexpected token, expected the token '('");
     
     adv(); // (
@@ -402,7 +417,7 @@ public:
       return log_err("while condition expression can't be empty");
     }
 
-    if (!cur_tok.is_tool(')'))
+    if (!cur_tok.is_tool(")"))
       log_err("unexpected token, expected the token ')'");    
     
     adv(); // )
@@ -418,7 +433,7 @@ public:
 
     auto V = parse_expr();
     if (cur_tok.type == tok_other
-      && cur_tok.is_tool(';'))
+      && cur_tok.is_tool(";"))
       adv();
     
     return std::make_unique<RetStmtNode>(std::move(V));
@@ -436,19 +451,19 @@ public:
     while(1) {
       // because [] takes precedence over *.
       size_t ptr_level = 0;
-      for (; cur_tok.is_tool('*'); ptr_level++) adv();
+      for (; cur_tok.is_tool("*"); ptr_level++) adv();
 
       if (cur_tok.type != tok_id)
         log_err("unexpected token, expected an identifier.");
       
-      Var v = { EXT_STR_ANY(cur_tok.val), ty };
+      Var v = { std::any_cast<const std::string&>(cur_tok.val), ty };
       std::stack<uint64_t> szs;
 
       adv();
-      while (cur_tok.is_tool('[')) {
+      while (cur_tok.is_tool("[")) {
         adv(); // '['
         auto sz = parse_num();
-        if (!sz || !cur_tok.is_tool(']'))
+        if (!sz || !cur_tok.is_tool("]"))
           return log_err("the array size is not literal integer.");
         auto ss = dynamic_cast<NumExprNode*>(sz.get())->get_val();
         if (ss.type() != typeid(int))
@@ -463,16 +478,16 @@ public:
         v.type = v.type->getPointerTo();
 
       node_t init;
-      if (cur_tok.is_tool('=')) {
+      if (cur_tok.is_tool("=")) {
         adv();
         init = parse_expr();
         if (!init) return nullptr;
       } else init = nullptr;
       
       lst.emplace_back(v, std::move(init));
-      if (cur_tok.is_tool(';'))
+      if (cur_tok.is_tool(";"))
         break;
-      if (!cur_tok.is_tool(','))
+      if (!cur_tok.is_tool(","))
         return log_err("unexpected token, expected a ','");
       adv();
     }
@@ -497,18 +512,18 @@ public:
   }
 
   // a calculatable expression
-  node_t parse_expr() {
+  node_t parse_expr(int oppr = 0) {
     node_t lhs = parse_prim();
     if (!lhs) return nullptr;
 
     // equivalent model, root binary node_t is 0
-    return parse_binrhs(0, std::move(lhs));
+    return parse_binrhs(oppr, std::move(lhs));
   }
 
   stmt_t parse_stmt() {
     stmt_t s = parse_expr();
     // stmt must end with token ';'
-    if (cur_tok.is_tool(';')) adv();
+    if (cur_tok.is_tool(";")) adv();
 
     return s;
   }
@@ -560,7 +575,7 @@ public:
       }
       break;
       case tok_other:
-        if (cur_tok.is_tool(';')) { adv(); break; }
+        if (cur_tok.is_tool(";")) { adv(); break; }
       default:
       {
         auto top = parse_toplevel();

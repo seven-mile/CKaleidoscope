@@ -12,9 +12,26 @@ def int rd() {
   for(;isdigit(c);c=getchar())x=x*10+c-'0';return x*f;
 }
 
+def void swap(int *a, int *b) {
+  *a = *a ^ *b;
+  *b = *a ^ *b;
+  *a = *a ^ *b;
+}
+
 def int main() {
   int a = rd(), b = rd();
-  printf("%d\n", a+b);
+  printf("a + b = %d\n", a+b);
+  printf("a ^ b = %d\n", a^b);
+  printf("a & b = %d\n", a&b);
+  printf("a | b = %d\n", a|b);
+  printf("!a || !b = %d\n", !a || !b);
+  printf("~a = %d, ~b = %d\n", ~a, ~b);
+  printf("(a+b) >> 1 = %d\n", (a+b)>>1);
+
+  swap(&a, &b);
+
+  printf("after: %d %d\n", a, b);
+  printf("%lld\n", 1984915616546415ll);
 
   return 0;
 }
