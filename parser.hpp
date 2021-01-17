@@ -102,7 +102,7 @@ public:
   }
 
   node_t parse_id() {
-    std::string cur_id = std::any_cast<const std::string&>(cur_tok.val);
+    auto cur_id = std::any_cast<const std::string&>(cur_tok.val);
     adv();
 
     if (cur_tok.is_tool("("))
@@ -240,10 +240,35 @@ public:
   // lhs binop(pr) rest_section
   //     ^ cur_pos
   node_t parse_binrhs(int oppr, node_t lhs) {
+    std::vector<std::pair<std::string, expr_t>> layer;
+    bool is_right_asso = false;
+
     while (1) {
       int pr = get_cur_prior();
 
-      if (pr < oppr) return lhs;
+      if (pr < oppr) {
+        if (is_right_asso) {
+          // right to left insert
+          auto res = std::move(layer.back().second);
+
+          // std::cerr << "\n\n";
+
+          // output_list<std::pair<std::string, expr_t>>(layer, [](auto &x, auto &os){
+          //   os << "{ \"" << x.first << "\", ";
+          //   x.second->output();
+          //   os << " }";
+          // });
+
+          // std::cerr << "\n\n";
+
+          for (int idx = layer.size()-2; idx>=0; idx--)
+            res = std::make_unique<BinExprNode>(layer[idx+1].first, std::move(layer[idx].second), std::move(res));
+          lhs = std::make_unique<BinExprNode>(layer.front().first, std::move(lhs), std::move(res));
+        }
+        return lhs;
+      }
+
+      is_right_asso |= pr == 2 || pr == 8 || pr  == 9;
 
       // it must be a binop
       auto op = std::any_cast<const std::string &>(cur_tok.val);
@@ -258,15 +283,19 @@ public:
       //                        ^ cur_pos
 
       if (pr < nxpr) {
+        // next layer, e.g. a + b + c*d*e + f*g
+        //                         ( ^   )
         rhs = parse_binrhs(pr+1, std::move(rhs));
         if (!rhs) return nullptr;
       }
-      lhs = std::make_unique<BinExprNode>(op, std::move(lhs), std::move(rhs));
+      if (is_right_asso)
+        layer.emplace_back(op, std::move(rhs)); // emplace-move should take quite little time
+      else
+        lhs = std::make_unique<BinExprNode>(op, std::move(lhs), std::move(rhs));
     }
   }
 
-  // all functions return a number(double), so the pattern is
-  // func_name(func_arg1, func_arg2, ...)
+  // def ret_type func_name(func_arg1, func_arg2, ...)
   proto_t parse_proto() {
     if (!cur_tok.is_type())
       return log_err("unexpected token, expected a type name.");
@@ -275,7 +304,7 @@ public:
     adv();
     if (cur_tok.type != tok_id)
       return log_err("unexpected token, expected an identifier.");
-    std::string id = std::any_cast<const std::string&>(cur_tok.val);
+    auto id = std::any_cast<const std::string&>(cur_tok.val);
     
     adv();
     if (!cur_tok.is_tool("("))
@@ -465,7 +494,7 @@ public:
         auto sz = parse_num();
         if (!sz || !cur_tok.is_tool("]"))
           return log_err("the array size is not literal integer.");
-        auto ss = dynamic_cast<NumExprNode*>(sz.get())->get_val();
+        auto ss = dynamic_cast<NumExprNode*>(sz.get())->get_value();
         if (ss.type() != typeid(int))
           return log_err("invalid subscript, expected constant integer.");
         szs.push(std::any_cast<int>(ss));
@@ -548,6 +577,15 @@ public:
       {
         auto def = parse_def();
         if (!def) { adv(); break; }
+
+        if (def->get_name() == "main") {
+          // return value default zero
+          if (def->get_proto()->get_return_type() != tok_kw_int)
+            throw syntax_error("the return type of the main function should be int32.");
+
+          def->get_body()->get_list().push_back(
+            std::make_unique<RetStmtNode>(std::make_unique<NumExprNode>(0)));
+        }
         
         if (!def->codegen()) return;
 

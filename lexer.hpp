@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cinttypes>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <any>
 #include <llvm/IR/Type.h>
@@ -29,6 +30,9 @@ enum tag_tok : char {
 
     tok_kw_void,
     tok_kw_int,
+    tok_kw_uint,
+    tok_kw_int64,
+    tok_kw_uint64,
     tok_kw_number,
     tok_kw_string,
     tok_kw_char,
@@ -62,18 +66,29 @@ enum tag_tok : char {
 };
 
 const std::string map_tok[] = {
-  "EOF", "Define", "Extern", "Const", "Void", "Int", "Number", "String", "Char", "Bool", "True", "False",
-  "If", "Else", "For", "While", "Return", "Identity", "Literal Number", "Literal Char", "Literal String",
+  "EOF", "Define", "Extern", "Const",
+  "Void", "Int", "Uint", "Int64", "Uint64", "Number", "String", "Char",
+  "Bool", "True", "False",
+  "If", "Else", "For", "While", "Return",
+  "Identity",
+  "Literal Number", "Literal Char", "Literal String",
   "VarArgs Dots", "Self Increment", "Self Decrement", "Other Lang Tool"
 };
 
 inline const bool tok_is_type(const tag_tok t) {
-  return t == tok_kw_int    ||
+  return 
          t == tok_kw_void   ||
+
+         t == tok_kw_int    ||
+         t == tok_kw_uint   ||
+         t == tok_kw_int64  ||
+         t == tok_kw_uint64 ||
+         
          t == tok_kw_number ||
          t == tok_kw_string ||
          t == tok_kw_char   ||
-         t == tok_kw_bool   ;
+         t == tok_kw_bool   ||
+         0;
 }
 
 inline llvm::Type* get_type_of_tok(const tag_tok t) {
@@ -87,7 +102,11 @@ inline llvm::Type* get_type_of_tok(const tag_tok t) {
     case tok_kw_bool:
       return llvm::Type::getInt1Ty(g_context);
     case tok_kw_int:
+    case tok_kw_uint:
       return llvm::Type::getInt32Ty(g_context);
+    case tok_kw_int64:
+    case tok_kw_uint64:
+      return llvm::Type::getInt64Ty(g_context);
     case tok_kw_void:
       return llvm::Type::getVoidTy(g_context);
     default:
@@ -200,6 +219,12 @@ public:
         curx = tok_kw_void;
       } else if (tmp_str == "int") {
         curx = tok_kw_int;
+      } else if (tmp_str == "int64") {
+        curx = tok_kw_int;
+      } else if (tmp_str == "uint") {
+        curx = tok_kw_int;
+      } else if (tmp_str == "uint64") {
+        curx = tok_kw_int;
       } else if (tmp_str == "number") {
         curx = tok_kw_number;
       } else if (tmp_str == "string") {
@@ -262,10 +287,15 @@ public:
         if (!isdigit(ch) && ch != '.' && ch != 'e' && ch != '-')
           throw syntax_error("invalid literal float number.");
       }
-      if (verify_dot || verify_e) return { tok_lit_num, strtod(tmp_str.c_str(), nullptr) };
+      if (verify_dot || verify_e) return { tok_lit_num, std::strtod(tmp_str.c_str(), nullptr) };
       else {
-        if (cnt_ch[1] == 2) return { tok_lit_num, (int64_t)atoll(tmp_str.c_str()) };
-        return { tok_lit_num, atoi(tmp_str.c_str()) };
+        if (cnt_ch[0]) {
+          if (cnt_ch[1] == 2) return { tok_lit_num, (uint64_t)std::strtoull(tmp_str.c_str(), nullptr, 10) };
+          return { tok_lit_num, (uint)std::strtoul(tmp_str.c_str(), nullptr, 10) };
+        } else {
+          if (cnt_ch[1] == 2) return { tok_lit_num, (int64_t)atoll(tmp_str.c_str()) };
+          return { tok_lit_num, (int)std::strtol(tmp_str.c_str(), nullptr, 10) };
+        }
       }
     }
     if (~file == '/' && file.peek() == '/') {

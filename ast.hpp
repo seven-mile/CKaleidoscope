@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <any>
 #include <bits/stdint-intn.h>
+#include <bits/stdint-uintn.h>
 #include <cassert>
 #include <cstddef>
 #include <iostream>
@@ -43,7 +44,7 @@
 namespace zMile {
 
 template<class err_t = syntax_error>
-inline auto log_err(const char* errinfo) {
+inline auto log_err(std::string errinfo) {
   throw err_t(errinfo);
   return nullptr;
 }
@@ -68,7 +69,7 @@ inline std::string textize_object(T* x) {
   return os.str();
 }
 
-// print "\n" as "\\n"
+// print R("\n") as "\\n"
 inline std::string get_raw_string(std::string str) {
   for (auto it = str.begin(); it < str.end(); it++)
     switch (*it) {
@@ -80,68 +81,50 @@ inline std::string get_raw_string(std::string str) {
   return str;
 }
 
-inline llvm::ConstantInt* get_const_int_value(int64_t v, int b = 32) {
-  return llvm::ConstantInt::get(g_context, llvm::APInt(b, v));
+inline llvm::ConstantInt* get_const_int_value(int64_t v, int b = 32, bool is_signed = true) {
+  return llvm::ConstantInt::get(g_context, llvm::APInt(b, v, is_signed));
 }
 
 inline llvm::Constant* get_const_double_value(double v) {
   return llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), v);
 }
 
-inline llvm::Constant* get_default_value(tag_tok t) {
-  static llvm::Constant
-    *bl = get_const_int_value(0, 1),
-    *ch = get_const_int_value(0, 8),
-    *it = get_const_int_value(0),
-    *st = llvm::ConstantPointerNull::get(llvm::Type::getInt8PtrTy(g_context)),
-    *db = get_const_double_value(0);
-
-  switch (t) {
-  case tok_kw_bool:
-    return bl;
-  case tok_kw_char:
-    return ch;
-  case tok_kw_string:
-    return st;
-  case tok_kw_number:
-    return db;
-  case tok_kw_int:
-    return it;
-  default:
-    return log_err<std::logic_error>("no default value found!");
-  }
-}
-
 inline llvm::Constant* get_default_value(llvm::Type* t) {
   if (t->isAggregateType()) return llvm::ConstantAggregateZero::get(t);
   if (t->isPointerTy()) return llvm::ConstantPointerNull::get((llvm::PointerType*)t);
-  return get_default_value(get_tok_of_type(t));
+  if (t->isIntegerTy()) return get_const_int_value(0, t->getScalarSizeInBits());
+  if (t->isDoubleTy()) return get_const_double_value(0);
+  return log_err<std::invalid_argument>("failed to get default value, invalid type.");
 }
 
 inline llvm::Constant* get_const_value_as(llvm::Type* ty, llvm::Value *I) {
   if (I) {
     if (I->getType()->isIntegerTy()) {
-      auto CI = llvm::dyn_cast<llvm::ConstantInt>(I);
-      if (ty->isDoubleTy())
-        return get_const_double_value(CI->getValue().bitsToDouble());
-      else if (ty->isIntegerTy() && ty->getIntegerBitWidth() >= I->getType()->getIntegerBitWidth())
-        return CI;
-      else return log_err("no available converter for the global variable initializer.");
+      if (auto CI = llvm::dyn_cast<llvm::ConstantInt>(I)) {
+        if (ty->isDoubleTy())
+          return get_const_double_value(CI->getValue().bitsToDouble());
+        else if (ty->isIntegerTy() && ty->getIntegerBitWidth() >= I->getType()->getIntegerBitWidth())
+          return CI;
+        else return log_err("no available converter for the global variable initializer.");
+      }
     }
     else if (I->getType()->isDoubleTy()) {
-      auto CF = llvm::dyn_cast<llvm::ConstantFP>(I);
-      if (ty->isDoubleTy())
-        return CF;
-      else return log_err("no available converter for the global variable initializer.");
+      if (auto CF = llvm::dyn_cast<llvm::ConstantFP>(I)) {
+        if (ty->isDoubleTy())
+          return CF;
+        else return log_err("no available converter for the global variable initializer.");
+      }
     }
     else if (I->getType()->isPointerTy()) {
-      auto CP = llvm::dyn_cast<llvm::Constant>(I);
-      if (ty->isPointerTy()) {
-        return CP;
-        if (ty->getPointerElementType() != I->getType())
-          std::cerr << "warning: unsafe pointer convertion." << std::endl;
+      if (auto CP = llvm::dyn_cast<llvm::Constant>(I)) {
+        if (ty->isPointerTy()) {
+          return CP;
+          if (ty->getPointerElementType() != I->getType())
+            std::cerr << "warning: unsafe pointer convertion." << std::endl;
+        } else {
+          return log_err("no available converter for the global variable initializer.");
+        }
       }
-      else return log_err("no available converter for the global variable initializer.");
     } else return log_err("initializer used for unsupported type.");
   }
   return nullptr;
@@ -167,14 +150,6 @@ inline uint get_type_prec(ty* t) {
   }
 }
 
-inline void rebase_int_pair(llvm::Value *&L, llvm::Value *&R) {
-  int pl = get_type_prec(L->getType()), pr = get_type_prec(R->getType());
-  if (pl < std::max(pl, pr))
-    L = g_builder.CreateSExt(L, ty::getIntNTy(g_context, std::max(pl, pr)));
-  if (pr < std::max(pl, pr))
-    R = g_builder.CreateSExt(R, ty::getIntNTy(g_context, std::max(pl, pr)));
-}
-
 class IOutputable {
 public:
   virtual void output(std::ostream & os = std::cerr) = 0;
@@ -190,7 +165,7 @@ public:
   virtual llvm::Value* codegen_left() const = 0;
 };
 
-class INameGetable {
+class INamedObject {
 public:
   virtual std::string get_name() const = 0;
 };
@@ -203,12 +178,12 @@ public:
   }
 };
 
-class Node : public IOutputable, public IValueGenable, public IHasType, public INameGetable {
+class Node : public IOutputable, public IValueGenable, public IHasType {
 public:
   virtual ~Node() = default;
   virtual llvm::Value* codegen() override = 0;
   virtual llvm::Type* get_type() const override = 0;
-  virtual bool is_left() { return false; }
+  virtual bool is_left() const { return false; }
 };
 
 using node_t = std::unique_ptr<Node>;
@@ -222,7 +197,7 @@ using expr_t = std::unique_ptr<ExprNode>;
 
 class LeftExprNode : public ExprNode, public ILeftValue {
 public:
-  virtual bool is_left() override { return true; }
+  virtual bool is_left() const override { return true; }
 };
 using left_t = std::unique_ptr<LeftExprNode>;
 
@@ -240,12 +215,7 @@ typedef struct Var {
 
   Var(const std::string& name, llvm::Type* type) : name(name), type(type) {  }
 
-  std::string get_type_name() const {
-    std::string str;
-    llvm::raw_string_ostream os(str);
-    type->print(os);
-    return os.str();
-  }
+  std::string get_type_name() const { return textize_object(type); }
 
   std::string to_string(bool hasType = false) const {
     if (hasType) return get_type_name() + " " + name;
@@ -270,9 +240,6 @@ public:
   virtual llvm::Value* codegen() override {
     return llvm::UndefValue::get(get_type());
   }
-  virtual std::string get_name() const override {
-    return "null";
-  }
 };
 
 class NumExprNode : public ExprNode {
@@ -281,8 +248,10 @@ class NumExprNode : public ExprNode {
 public:
   NumExprNode(std::any val) : val(val) {  }
   virtual llvm::Type* get_type() const override {
-    if (val.type() == typeid(int)) return ty::getInt32Ty(g_context);
-    else if (val.type() == typeid(int64_t)) return ty::getInt64Ty(g_context);
+    if (val.type() == typeid(int) || val.type() == typeid(uint))
+      return ty::getInt32Ty(g_context);
+    else if (val.type() == typeid(int64_t) || val.type() == typeid(uint64_t))
+      return ty::getInt64Ty(g_context);
     else if (val.type() == typeid(double)) return ty::getDoubleTy(g_context);
     else return log_err("invalid val type.");
   }
@@ -297,16 +266,15 @@ public:
       return get_const_double_value(std::any_cast<double>(val));
     if (val.type() == typeid(int))
       return get_const_int_value(std::any_cast<int>(val), 32);
+    if (val.type() == typeid(uint))
+      return get_const_int_value(std::any_cast<int>(val), 32, false);
     if (val.type() == typeid(int64_t))
       return get_const_int_value(std::any_cast<int64_t>(val), 64);
+    if (val.type() == typeid(uint64_t))
+      return get_const_int_value(std::any_cast<int64_t>(val), 64, false);
     return log_err<std::invalid_argument>("invalid val type.");
   }
-  virtual std::string get_name() const override {
-    return "number";
-  }
-  virtual std::any get_val() const {
-    return val;
-  }
+  virtual const std::any& get_value() const { return val; }
 };
 
 class CharExprNode : public ExprNode {
@@ -321,9 +289,7 @@ public:
   virtual llvm::Value* codegen() override {
     return get_const_int_value(val, 8);
   }
-  virtual std::string get_name() const override {
-    return std::string("") + val;
-  }
+  virtual char get_value() const { return val; }
 };
 
 class StringExprNode : public ExprNode {
@@ -339,9 +305,7 @@ public:
   virtual llvm::Value* codegen() override {
     return g_builder.CreateGlobalStringPtr(val);
   }
-  virtual std::string get_name() const override {
-    return val;
-  }
+  virtual std::string get_value() const { return val; }
 };
 
 class BoolExprNode : public ExprNode {
@@ -356,12 +320,10 @@ public:
   virtual llvm::Value* codegen() override {
     return get_const_int_value(val, 1);
   }
-  virtual std::string get_name() const override {
-    return val ? "true" : "false";
-  }
+  virtual bool get_value() const { return val; }
 };
 
-class VarExprNode : public LeftExprNode {
+class VarExprNode : public LeftExprNode, public INamedObject {
   std::string id;
 
 public:
@@ -432,9 +394,7 @@ public:
       return g_builder.CreateGEP(ptr, arr_pos);
     else return g_builder.CreateGEP(ptr, pos);
   }
-  virtual std::string get_name() const override {
-    return "SubScript(" + arr->get_name() + ")";
-  }
+  virtual const left_t& get_array() const { return arr; }
 };
 
 class VarDeclNode : public DeclNode {
@@ -508,15 +468,10 @@ public:
     return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
   }
 
-  // please use get_list to get all names.
-  virtual std::string get_name() const override {
-    return lst.front().first.name;
-  }
-
   list_t& get_list() { return lst; }
 };
 
-class BinExprNode : public ExprNode {
+class BinExprNode : public LeftExprNode {
   std::string op;
   expr_t left, right;
 
@@ -665,12 +620,19 @@ public:
     return log_err("invalid binary operator.");
   }
 
-  virtual std::string get_name() const override {
-    return "binop";
+  virtual bool is_left() const override {
+    return op == "=" && left->is_left();
+  }
+
+  virtual llvm::Value* codegen_left() const override {
+    if (op == "=" && left->is_left())
+      return dynamic_cast<ILeftValue*>(left.get())->codegen_left();
+    
+    return log_err("invalid left value expr!");
   }
 };
 
-class CallExprNode : public ExprNode {
+class CallExprNode : public ExprNode, public INamedObject {
   std::string func;
   std::vector<expr_t> args;
 
@@ -753,10 +715,6 @@ public:
     g_builder.CreateStore(V, g_named_values["__return_value"].top());
     return g_builder.CreateBr(g_bl_ret);
   }
-
-  virtual std::string get_name() const override {
-    return val->get_name();
-  }
 };
 
 class BlockNode : public StmtNode {
@@ -790,9 +748,7 @@ public:
 
     return res;
   }
-  virtual std::string get_name() const override {
-    return "block";
-  }
+  virtual list_t& get_list() { return v; }
 };
 
 using block_t = std::unique_ptr<class BlockNode>;
@@ -881,10 +837,6 @@ public:
 
     return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
   }
-
-  virtual std::string get_name() const override {
-    return "if";
-  }
 };
 
 class ForStmtNode : public ExprNode {
@@ -965,15 +917,11 @@ public:
 
     return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
   }
-
-  virtual std::string get_name() const override {
-    return "for";
-  }
 };
 
 // classes for functions
 
-class ProtoNode : public Node {
+class ProtoNode : public Node, public INamedObject {
   std::string id;
   tag_tok type;
   std::vector<Argu> args;
@@ -1018,20 +966,23 @@ public:
 
 using proto_t = std::unique_ptr<ProtoNode>;
 
-class FuncNode : public LeftExprNode {
-  proto_t proto;
+class FuncNode : public LeftExprNode, public INamedObject {
+  proto_t proto; // it will be moved after codegen.
   block_t body; // what it will be calculated.
+
+  std::string name; // record its name to find its proto.
 public:
   FuncNode(proto_t proto,
     block_t body) : proto(std::move(proto)),
-      body(std::move(body)) {  }
+      body(std::move(body)), name(this->proto->get_name()) {  }
 
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
 
   // { Function, { Prototype, $...$ }, { Body, "..." } }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"Function\", \"prototype\": ";
-    proto->output(os);
+    if (proto) proto->output(os);
+    else g_protos[name]->output(os);
     os << ", \"body\": ";
     body->output();
     os << " }";
@@ -1102,12 +1053,17 @@ public:
   }
 
   virtual llvm::Value* codegen_left() const override {
-    auto fun = get_func(proto->get_name());
+    auto fun = get_func(name);
     if (!fun) return log_err("unknown function name!");
     return fun;
   }
 
-  virtual std::string get_name() const override { return proto->get_name(); }
+  virtual std::string get_name() const override { return name; }
+  virtual const proto_t& get_proto() const {
+    if (proto) return proto;
+    else return g_protos[name];
+  }
+  virtual const block_t& get_body() const { return body; }
 };
 
 using func_t = std::unique_ptr<FuncNode>;
@@ -1169,9 +1125,6 @@ public:
     if (op == '*') return operand->codegen();
     else return log_err<std::logic_error>("this unary expression is not left value.");
   }
-  virtual std::string get_name() const override {
-    return "UnaryExpression";
-  }
 };
 
 class SelfFrontCreExprNode : public ExprNode, public ILeftValue {
@@ -1194,9 +1147,6 @@ public:
     g_builder.CreateStore(Q, L);
 
     return Q;
-  }
-  virtual std::string get_name() const override {
-    return std::string(is_add ? "in" : "de") + "crement";
   }
   virtual llvm::Value* codegen_left() const override {
     return dynamic_cast<ILeftValue*>(left.get())->codegen_left();
@@ -1225,10 +1175,6 @@ public:
 
     return P;
   }
-  virtual std::string get_name() const override {
-    return std::string(is_add ? "in" : "de") + "crement";
-  }
-
 };
 
 }

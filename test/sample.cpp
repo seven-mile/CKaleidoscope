@@ -18,10 +18,10 @@
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cstdlib>
-#include <llvm-9/llvm/IR/GlobalValue.h>
-#include <llvm-9/llvm/IR/GlobalVariable.h>
-#include <llvm-9/llvm/IR/IRBuilder.h>
-#include <llvm-9/llvm/IR/Operator.h>
+#include <llvm/IR/GlobalValue.h>
+#include <llvm/IR/GlobalVariable.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Operator.h>
 #include <memory>
 #include <string>
 #include <vector>
