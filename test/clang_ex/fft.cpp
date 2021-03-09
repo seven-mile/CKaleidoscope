@@ -1,13 +1,7 @@
-extern int printf(string fmt, ...);
-extern int scanf(string fmt, ...);
-extern char getchar();
-extern char putchar();
-extern int isdigit(char ch);
-extern int puts(string str);
-extern int freopen_in(string file);
-extern int freopen_out(string file);
+#include <cctype>
+#include <cstdio>
 
-def int rd() {
+int rd() {
   int x=0,f=1;char c;while(!isdigit(c=getchar())){
     if(c=='-')f=-1;
   }
@@ -19,7 +13,7 @@ def int rd() {
 
 const int N = 2000003, M = 998244353, G = 3;
 
-def int qpow(int a, int b) {
+int qpow(int a, int b) {
   int r = 1;
   for (; b; b = b >> 1) {
     if (b & 1) r = 1ll * r * a % M;
@@ -28,20 +22,20 @@ def int qpow(int a, int b) {
   return r;
 }
 
-def int st(int x) {
+int st(int x) {
   if (x>=M) x-=M; if (x<0) x+=M; return x;
 }
 
 int rev[N];
 
-def void it(int n) {
+void it(int n) {
   for (int i=1; i<n; i++)
     rev[i] = (rev[i>>1]>>1)|((n>>1)*(i&1));
 }
 
 int cnt = 0;
 
-def void ntt(int *a, int n, int d) {
+void ntt(int *a, int n, int d) {
   for (int i=0; i<n; i++) if(i<rev[i]) {
     int tmp = a[i];
     a[i] = a[rev[i]];
@@ -55,7 +49,6 @@ def void ntt(int *a, int n, int d) {
       for (int k=j; k<j+(h>>1); k++) {
         cnt++;
         if (cnt == 1000) {
-          printf("h = %d, j = %d, k = %d\n", h, j ,k);
           cnt = 0;
         }
         int x = a[k], y = 1ll*w*a[k+(h>>1)]%M;
@@ -69,19 +62,17 @@ def void ntt(int *a, int n, int d) {
 
 int n, m, a[N], b[N];
 
-def int main() {
-  puts("here! [1]");
-  freopen_in("./test/fft/kp.in");
-  puts("here! [2]");
-  freopen_out("./test/fft/data.out");
+int main() {
   n = rd();
   m = rd();
+  puts("here! [1]");
   for (int i=0; i<=n; i++) a[i] = rd();
   for (int i=0; i<=m; i++) b[i] = rd();
   int lim = 1;
   for (; lim <= n+m+1; lim<<=1);
   it(lim);
   ntt(a, lim, 1);
+  puts("here! [2]");
   ntt(b, lim, 1);
 
   for (int i=0; i<lim; i++) a[i] = 1ll*a[i]*b[i]%M;

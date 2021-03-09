@@ -49,6 +49,9 @@ enum tag_tok : char {
 
     tok_kw_return,
 
+    tok_kw_break,
+    tok_kw_continue,
+
     // identifier
     tok_id,
 
@@ -69,7 +72,7 @@ const std::string map_tok[] = {
   "EOF", "Define", "Extern", "Const",
   "Void", "Int", "Uint", "Int64", "Uint64", "Number", "String", "Char",
   "Bool", "True", "False",
-  "If", "Else", "For", "While", "Return",
+  "If", "Else", "For", "While", "Return", "Break", "Continue",
   "Identity",
   "Literal Number", "Literal Char", "Literal String",
   "VarArgs Dots", "Self Increment", "Self Decrement", "Other Lang Tool"
@@ -251,8 +254,11 @@ public:
       }
         else if (tmp_str == "return") {
         curx = tok_kw_return;
-      }
-        else curx = tok_id;
+      } else if (tmp_str == "break") {
+        curx = tok_kw_break;
+      } else if (tmp_str == "continue") {
+        curx = tok_kw_continue;
+      } else curx = tok_id;
 
       return { curx, tmp_str };
     }

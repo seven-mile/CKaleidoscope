@@ -1,0 +1,23 @@
+extern int printf(string fmt, ...);
+
+const int N = 1e5+3;
+
+int someorz = 0, p[N];
+bool vis[N];
+
+int (*ptr_to_arr)[N];
+
+def int main() {
+  const int MX = 1e5;
+  
+  for (int i=2; i<=MX; i++) {
+    if (!p[i]) p[++p[0]] = i;
+    for (int j=1; j<=p[0] && i*p[j]<=MX; j++) {
+      p[i*p[j]] = 1;
+      if (i % p[j] == 0) break;
+    }
+  }
+
+  printf("the 100th prime is %d", p[100]);
+  return 0;
+}

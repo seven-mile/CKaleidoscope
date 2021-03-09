@@ -28,9 +28,13 @@
 
 using namespace llvm;
 
+inline bool IsLLVMConstant(Value* value) {
+  return isa<Constant>(value);
+}
+
 static GlobalVariable *CreateFibsGlobalVariable(Module *M, LLVMContext &Context) {
   auto aggr_type = ArrayType::get(Type::getInt32Ty(Context), 12);
-  auto gv = new GlobalVariable(*M, aggr_type, false,
+  auto gv = new GlobalVariable(*M, aggr_type, true,
     GlobalVariable::CommonLinkage, ConstantAggregateZero::get(aggr_type), "fibs");
   return gv;
 }
@@ -81,6 +85,25 @@ static Function *CreateFibFunction(Module *M, LLVMContext &Context, IRBuilder<> 
                                          "addresult", RecurseBB);
   // auto GEPX = GetElementPtrInst::Create(GVFibs->getType()->getPointerElementType(), GVFibs, {ArgX}, "GetIdx", RecurseBB);
   Builder.SetInsertPoint(RecurseBB);
+
+  auto loadConstGV = Builder.CreateLoad(GVFibs, "gvx");
+  
+  dbgs() << *loadConstGV << ' ' << *loadConstGV->getType() << '\n';
+
+  auto alca = Builder.CreateAlloca(
+    ArrayType::get(Type::getInt32Ty(Context), 12),
+    nullptr,
+    "mine"
+  );
+
+  auto alcb = Builder.CreateAlloca(
+    Type::getInt32Ty(Context),
+    nullptr,
+    "yours"
+  );
+
+  dbgs() << *alca->getType() << ' ' << *alcb->getType() << '\n';
+
   // auto SSSx = Builder.CreateAdd(Sum, CallFibX1);
   auto GEPX = Builder.CreateGEP(GVFibs, { ConstantInt::get(Context, APInt(32, 0)), ArgX }, "gepp");
   // auto GEPX = GetElementPtrInst::Create(GVFibs->getType(), GVFibs, { ConstantInt::get(Context, APInt(32, 0)), ArgX });
@@ -112,6 +135,8 @@ int main(int argc, char **argv) {
 
   // Create global array to memorize.
   GlobalVariable *GVFibs = CreateFibsGlobalVariable(M, Context);
+
+  dbgs() << *GVFibs->getType() << ' ' << *GVFibs->getInitializer()->getType() << '\n';
 
   // We are about to create the "fib" function:
   Function *FibF = CreateFibFunction(M, Context, Builder, GVFibs);

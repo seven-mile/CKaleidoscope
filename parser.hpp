@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/raw_ostream.h>
@@ -20,9 +21,9 @@
 
 namespace zMile {
 
-std::map<std::string, int> op_precedence
+std::map<std::string, int> binop_prec
 {
-  // {',', 1},
+  {",", 1},
   {"=", 2},
   {"+=", 2}, {"-=", 2}, // += -=
   {"*=", 2}, {"/=", 2}, {"%=", 2}, // *= /= %=
@@ -42,6 +43,13 @@ std::map<std::string, int> op_precedence
   {"*", 13}, {"/", 13}, {"%", 13},
 };
 
+std::map<std::string, int> unary_op
+{
+  {"+", 0}, {"-", 0},
+  {"~", 0}, {"!", 0},
+  {"*", 0}, {"&", 0}
+};
+
 const int unary_precedence = 16;
 
 class Parser {
@@ -53,9 +61,75 @@ class Parser {
     if (cur_tok.type != tok_other || cur_tok.val.type() != typeid(std::string))
       return -1; // always pass
 
-    int res = op_precedence[std::any_cast<std::string>(cur_tok.val)];
+    int res = binop_prec[std::any_cast<std::string>(cur_tok.val)];
     if (res <= 0) return -1;
     return res;
+  }
+
+  static void expand_comma_expr(expr_t expr, const std::function<void(expr_t)>& func) {
+    BinExprNode *ptr = nullptr;
+    if (instof<BinExprNode>(*expr) &&
+        (ptr = dynamic_cast<BinExprNode*>(expr.get()))->op == ",") {
+      
+      expand_comma_expr(std::move(ptr->left), func);
+      func(std::move(ptr->right));
+    }
+    else func(std::move(expr));
+  }
+
+  // */&... {id} [A][B]...
+  static std::string parse_id_type(expr_t expr, llvm::Type *&ty) {
+    if (auto ptr = dynamic_cast<VarExprNode*>(expr.get()))
+      return ptr->get_name();
+    
+    if (auto ptr = dynamic_cast<UnaryExprNode*>(expr.get())) {
+      auto & op = ptr->op;
+      if (op == "*" || op == "&") ty = ty->getPointerTo();
+      else throw syntax_error("invalid type unary operator definition.");
+      return parse_id_type(std::move(ptr->operand), ty);
+    }
+
+    if (auto ptr = dynamic_cast<SubScriptExprNode*>(expr.get())) {
+      llvm::Constant* idxv = nullptr;
+
+      // todo: deal with some special var situation such as (1, 2, var_a)
+      if (auto ptrvar = dynamic_cast<VarExprNode*>(ptr->idx.get())) {
+        if (ptrvar->is_global()) {
+          idxv = 
+            llvm::dyn_cast<llvm::GlobalVariable>(
+              g_named_values[ptrvar->get_name()].top())
+              ->getInitializer();
+        }
+      }
+
+      if (!idxv) {
+        auto idx_temp = ptr->idx->codegen();
+        if (!idx_temp) return nullptr;
+
+        idxv = llvm::dyn_cast<llvm::Constant>(idx_temp);
+      }
+      
+      if (!idxv)
+        return log_err("type definition index must be a constant!");
+      
+      uint64_t idx = 0;
+      if (auto idxfp = llvm::dyn_cast<llvm::ConstantFP>(idxv)) {
+        idx = idxfp->getValueAPF().convertToDouble();
+      } else if (auto idxint = llvm::dyn_cast<llvm::ConstantInt>(idxv)) {
+        idx = idxint->getZExtValue();
+      } else throw object_invalid("unsupported array index type.");
+
+      if (!idx) return log_err("array index must be constant.");
+
+      ty = llvm::ArrayType::get(ty, idx);
+      return parse_id_type(std::move(ptr->arr), ty);
+    }
+
+    if (auto ptr = dynamic_cast<ParenExprNode*>(expr.get())) {
+      return parse_id_type(std::move(ptr->val), ty);
+    }
+
+    throw syntax_error("invalid var id expr type!");
   }
 
 public:
@@ -88,75 +162,82 @@ public:
 
     adv(); // )
     
-    return expr;
+    return std::make_unique<ParenExprNode>(std::move(expr));
   }
 
-  left_t parse_subscr(left_t arr) {
-    if (!arr) return log_err<object_invalid>("the argument array is invalid!");
-    adv(); // '['
-    auto idx = parse_expr();
-    if (!cur_tok.is_tool("]"))
-      return log_err("unexpected token, expected ']'.");
-    adv(); // ']'
-    return std::make_unique<SubScriptExprNode>(std::move(arr), std::move(idx));
+  node_t try_parse_postfix(node_t core) {
+    if (!core)
+      return log_err<object_invalid>("the core argument is invalid!");
+    
+    if (cur_tok.is_tool("["))
+    {
+      adv(); // '['
+      auto idx = parse_expr();
+      if (!cur_tok.is_tool("]"))
+        return log_err("unexpected token, expected ']'.");
+      adv(); // ']'
+      core =
+          std::make_unique<SubScriptExprNode>(std::move(core), std::move(idx));
+    }
+    else if (cur_tok.is_tool("("))
+    {
+      adv();
+      std::vector<node_t> args;
+      auto ptrVarNode = dynamic_cast<VarExprNode*>(core.get());
+      if (!ptrVarNode)
+        throw syntax_error("function reference calling not supported until now!");
+
+      if (cur_tok.is_tool(")"))
+        return (adv(), std::make_unique<CallExprNode>(ptrVarNode->get_name(), std::move(args)));
+
+      // (((A,B),C),D)
+      auto args_expr = parse_expr();
+
+      if (!cur_tok.is_tool(")"))
+        log_err("unexpected token, expected ')'.");
+      adv();
+
+      expand_comma_expr(std::move(args_expr), [&](expr_t expr){
+        args.push_back(std::move(expr));
+      });
+
+
+      return std::make_unique<CallExprNode>(ptrVarNode->get_name(), std::move(args));
+    }
+    // self in/de-crement afterward
+    else if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
+      bool is_add = cur_tok.type == tok_addadd;
+      adv();
+      return std::make_unique<SelfBackCreExprNode>(
+        static_unique_ptr_cast<ExprNode>(std::move(core)), is_add);
+    }
+
+    // todo: member access "." and "->"
+
+    if (cur_tok.is_tool("[") || cur_tok.is_tool("(")
+     || cur_tok.type == tok_addadd || cur_tok.type == tok_subsub)
+      return try_parse_postfix(std::move(core));
+
+    return std::move(core);
   }
 
   node_t parse_id() {
     auto cur_id = std::any_cast<const std::string&>(cur_tok.val);
     adv();
 
-    if (cur_tok.is_tool("("))
-    {
-      // go on to parse call expr
-      adv();
-      std::vector<node_t> args;
-      if (!cur_tok.is_tool(")"))
-        while (1) {
-          if (node_t arg = parse_expr())
-            args.push_back(std::move(arg));
-          else return nullptr; // having thrown
-
-          if (cur_tok.is_tool(")"))
-            break;
-          if (!cur_tok.is_tool(","))
-            log_err("unexpected token, expected ',' or ')'.");
-          
-          adv();
-        }
-      adv();
-
-      return std::make_unique<CallExprNode>(cur_id, std::move(args));
-    }
-
-    left_t L = std::make_unique<VarExprNode>(cur_id);
-
-    while (cur_tok.is_tool("["))
-      L = parse_subscr(std::move(L));
-    
-    if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
-      if (!L->is_left())
-        return log_err("invalid expression for addadd, expected a left value.");
-      bool is_add = cur_tok.type == tok_addadd;
-      adv();
-      return std::make_unique<SelfBackCreExprNode>(
-        static_unique_ptr_cast<ExprNode>(std::move(L)), is_add);
-    }
+    node_t L = std::make_unique<VarExprNode>(cur_id);
 
     return L;
   }
 
   expr_t parse_addr() {
     adv(); // '&'
-    expr_t operand = parse_id();
-    // if (operand->get_type() != FuncNodeTy &&
-    //     operand->get_type() != VarExprNodeTy)
-    if (!operand->is_left())
-      return log_err("unexpected token, expected a variable or function name.");
+    expr_t operand = parse_expr(unary_precedence);
     
-    return std::make_unique<UnaryExprNode>('&', std::move(operand));
+    return std::make_unique<UnaryExprNode>("&", std::move(operand));
   }
 
-  node_t parse_prim(bool hasSign = false) {
+  node_t parse_core() {
     if (cur_tok.is_tool(";"))
       return std::make_unique<NullStmt>();
     if (cur_tok.type == tok_id)
@@ -179,12 +260,17 @@ public:
       return parse_while();
     if (cur_tok.type == tok_kw_return)
       return parse_return();
+    if (cur_tok.type == tok_kw_break)
+      return adv(), std::make_unique<LoopJumpStmtNode>(true);
+    if (cur_tok.type == tok_kw_continue)
+      return adv(), std::make_unique<LoopJumpStmtNode>(false);
     if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
+      bool is_add = cur_tok.type == tok_addadd;
       adv();
       auto left = parse_expr();
       if (!left->is_left())
         return log_err("invalid expression for addadd, expected a left value.");
-      return std::make_unique<SelfFrontCreExprNode>(std::move(left), cur_tok.type == tok_addadd);
+      return std::make_unique<SelfFrontCreExprNode>(std::move(left), is_add);
     }
     if (cur_tok.is_type() || cur_tok.is_spec())
       return parse_dvar();
@@ -193,26 +279,33 @@ public:
     if (cur_tok.is_tool("{"))
       return parse_block();
     
-    if (cur_tok.is_tool("&"))
-      return parse_addr();
-    if (cur_tok.is_tool("*"))
-      return adv(), std::make_unique<UnaryExprNode>('*', parse_expr(unary_precedence));
-    if (cur_tok.is_tool("!"))
-      return adv(), std::make_unique<UnaryExprNode>('!', parse_expr(unary_precedence));
-    if (cur_tok.is_tool("~"))
-      return adv(), std::make_unique<UnaryExprNode>('~', parse_expr(unary_precedence));
-
-    if (!hasSign && cur_tok.type == tok_other) {
-      if (cur_tok.is_tool("+")) {
-        auto expr = (adv(), parse_prim(true));
-        return expr;
-      }
-      if (cur_tok.is_tool("-")) {
-        auto expr = (adv(), parse_prim(true));
-        return std::make_unique<BinExprNode>("*", std::make_unique<NumExprNode>(-1), std::move(expr));
-      }
+    // unary
+    if (cur_tok.is_tool("-"))
+      return adv(), std::make_unique<BinExprNode>("*", std::make_unique<NumExprNode>(-1), parse_expr(unary_precedence));
+    if (cur_tok.type == tok_other
+        && cur_tok.val.type() == typeid(std::string)
+        && unary_op.find(std::any_cast<const std::string&>(cur_tok.val))
+            != unary_op.end()) {
+      auto un_op = std::any_cast<const std::string&>(cur_tok.val);
+      return adv(), std::make_unique<UnaryExprNode>(un_op, parse_expr(unary_precedence));
     }
+    // if (cur_tok.is_tool("&"))
+    //   return parse_addr();
+    // if (cur_tok.is_tool("*"))
+    //   return adv(), std::make_unique<UnaryExprNode>("*", parse_expr(unary_precedence));
+    // if (cur_tok.is_tool("!"))
+    //   return adv(), std::make_unique<UnaryExprNode>("!", parse_expr(unary_precedence));
+    // if (cur_tok.is_tool("~"))
+    //   return adv(), std::make_unique<UnaryExprNode>("~", parse_expr(unary_precedence));
+    // if (cur_tok.is_tool("+"))
+    //   return adv(), parse_expr(unary_precedence);
+    
     return log_err("identify expr token failed.");
+  }
+
+  node_t parse_prim() {
+    auto core = parse_core();
+    return try_parse_postfix(std::move(core));
   }
 
   // parse code blocks, which contains several stmt
@@ -241,34 +334,14 @@ public:
   //     ^ cur_pos
   node_t parse_binrhs(int oppr, node_t lhs) {
     std::vector<std::pair<std::string, expr_t>> layer;
-    bool is_right_asso = false;
 
     while (1) {
       int pr = get_cur_prior();
 
-      if (pr < oppr) {
-        if (is_right_asso) {
-          // right to left insert
-          auto res = std::move(layer.back().second);
-
-          // std::cerr << "\n\n";
-
-          // output_list<std::pair<std::string, expr_t>>(layer, [](auto &x, auto &os){
-          //   os << "{ \"" << x.first << "\", ";
-          //   x.second->output();
-          //   os << " }";
-          // });
-
-          // std::cerr << "\n\n";
-
-          for (int idx = layer.size()-2; idx>=0; idx--)
-            res = std::make_unique<BinExprNode>(layer[idx+1].first, std::move(layer[idx].second), std::move(res));
-          lhs = std::make_unique<BinExprNode>(layer.front().first, std::move(lhs), std::move(res));
-        }
+      if (pr < oppr)
         return lhs;
-      }
 
-      is_right_asso |= pr == 2 || pr == 8 || pr  == 9;
+      bool is_right_asso = pr == 2 || pr == 8 || pr  == 9;
 
       // it must be a binop
       auto op = std::any_cast<const std::string &>(cur_tok.val);
@@ -282,16 +355,13 @@ public:
       // posmap: lhs op(pr) rhs nxop(nxpr) [unparsed]
       //                        ^ cur_pos
 
-      if (pr < nxpr) {
+      if (is_right_asso ? pr <= nxpr : pr < nxpr) {
         // next layer, e.g. a + b + c*d*e + f*g
         //                         ( ^   )
-        rhs = parse_binrhs(pr+1, std::move(rhs));
+        rhs = parse_binrhs(pr + !is_right_asso, std::move(rhs));
         if (!rhs) return nullptr;
       }
-      if (is_right_asso)
-        layer.emplace_back(op, std::move(rhs)); // emplace-move should take quite little time
-      else
-        lhs = std::make_unique<BinExprNode>(op, std::move(lhs), std::move(rhs));
+      lhs = std::make_unique<BinExprNode>(op, std::move(lhs), std::move(rhs));
     }
   }
 
@@ -399,7 +469,7 @@ public:
   node_t parse_for() {
     adv(); // for
     if (!cur_tok.is_tool("("))
-      log_err("unexpected token, expected the token '('");
+      log_err("unexpected token, expected the token '('.");
     
     adv(); // (
     auto start = parse_stmt();
@@ -413,7 +483,7 @@ public:
       cond = std::make_unique<BoolExprNode>(true);
 
     if (!cur_tok.is_tool(";"))
-      log_err("unexpected token, expected the token ';'");
+      log_err("unexpected token, expected the token ';'.");
     
     adv(); // ;
 
@@ -421,7 +491,7 @@ public:
     if (!every) return nullptr;
 
     if (!cur_tok.is_tool(")"))
-      log_err("unexpected token, expected the token ')'");    
+      log_err("unexpected token, expected the token ')'.");    
     
     adv();
     auto body = parse_block();
@@ -434,7 +504,7 @@ public:
   node_t parse_while() {
     adv(); // while
     if (!cur_tok.is_tool("("))
-      log_err("unexpected token, expected the token '('");
+      log_err("unexpected token, expected the token '('.");
     
     adv(); // (
 
@@ -447,7 +517,7 @@ public:
     }
 
     if (!cur_tok.is_tool(")"))
-      log_err("unexpected token, expected the token ')'");    
+      log_err("unexpected token, expected the token ')'.");    
     
     adv(); // )
     auto body = parse_block();
@@ -477,49 +547,24 @@ public:
 
     std::vector<std::pair<Var, expr_t>> lst;
 
-    while(1) {
-      // because [] takes precedence over *.
-      size_t ptr_level = 0;
-      for (; cur_tok.is_tool("*"); ptr_level++) adv();
+    auto decls = parse_expr();
 
-      if (cur_tok.type != tok_id)
-        log_err("unexpected token, expected an identifier.");
-      
-      Var v = { std::any_cast<const std::string&>(cur_tok.val), ty };
-      std::stack<uint64_t> szs;
-
-      adv();
-      while (cur_tok.is_tool("[")) {
-        adv(); // '['
-        auto sz = parse_num();
-        if (!sz || !cur_tok.is_tool("]"))
-          return log_err("the array size is not literal integer.");
-        auto ss = dynamic_cast<NumExprNode*>(sz.get())->get_value();
-        if (ss.type() != typeid(int))
-          return log_err("invalid subscript, expected constant integer.");
-        szs.push(std::any_cast<int>(ss));
-        adv(); // ']'
+    if (!cur_tok.is_tool(";"))
+      return log_err("unexpected token, expected a ';'.");
+    
+    expand_comma_expr(std::move(decls), [ty, &lst](expr_t expr) {
+      std::pair<Var, expr_t> ele{{"", nullptr}, nullptr};
+      if (auto ptr = dynamic_cast<BinExprNode*>(expr.get())) {
+        if (ptr->op != "=")
+          throw syntax_error("invalid variable declaration syntax! expected '='.");
+        
+        ele.second = std::move(ptr->right);
+        expr = std::move(ptr->left);
       }
-
-      for (; !szs.empty(); szs.pop())
-        v.type = llvm::ArrayType::get(v.type, szs.top());
-      for (; ptr_level; ptr_level--)
-        v.type = v.type->getPointerTo();
-
-      node_t init;
-      if (cur_tok.is_tool("=")) {
-        adv();
-        init = parse_expr();
-        if (!init) return nullptr;
-      } else init = nullptr;
-      
-      lst.emplace_back(v, std::move(init));
-      if (cur_tok.is_tool(";"))
-        break;
-      if (!cur_tok.is_tool(","))
-        return log_err("unexpected token, expected a ','");
-      adv();
-    }
+      ele.first.type = ty;
+      ele.first.name = parse_id_type(std::move(expr), ele.first.type);
+      lst.push_back(std::move(ele));
+    });
 
     return std::make_unique<VarDeclNode>(lst, is_const);
   }
