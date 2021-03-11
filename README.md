@@ -27,12 +27,16 @@ to [create an issue](https://github.com/seven-mile/CKaleidoscope/issues/new).
 - [ ] Switch statement
 - [x] Return statement
 - [x] Pointers (such as &,* operator)
-- [ ] Full number types
-- [x] Array type
+- [x] Full number types
+- [x] Array type -> Compound array & pointer (even reference) type parsing
 - [x] Implement a segment tree
+- [x] Comma operator
+- [ ] `sizeof`,`alignof` operator
+- [ ] Ternary operator
 - [ ] Function (pointer) type
 - [ ] DWARF support ☆ Source-level debug
 - [ ] Compile into executable file
+- [ ] Label and `goto` [low prior]
 - [ ] Structure / class
 - [ ] **New bug detected: segfault when data is too large**
 
