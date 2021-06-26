@@ -30,8 +30,8 @@ int main(const int nargs, const char *cargs[])
   std::ifstream ifs;
   if (nargs == 2) {
     ifs = std::ifstream(cargs[1]);
-    if (!ifs) return zMile::log_err<zMile::io_error>(
-          "failed to get fstream for the argument file."), 0;
+    if (!ifs) throw zMile::io_error(
+          "failed to get fstream for the argument file.");
     fs = new zMile::FileSugar(ifs);
   }
   else fs = new zMile::FileSugar(std::cin);

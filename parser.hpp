@@ -4,6 +4,7 @@
 #include "ast.hpp"
 #include "errdef.hpp"
 #include "global.hpp"
+#include "ioagent.hpp"
 #include "jit.hpp"
 #include "lexer.hpp"
 #include "optimizer.hpp"
@@ -54,7 +55,12 @@ const int unary_precedence = 16;
 
 class Parser {
   Lexer& lex;
-  Token cur_tok = { tok_invalid, nullptr };
+  Token cur_tok = { tok_invalid, nullptr, {0,0} };
+
+  template<class err_t = syntax_error>
+  inline auto log_err(std::string errinfo) {
+    return log_err_with_loc<err_t>(errinfo, cur_tok.loc);
+  }
 
   inline void adv() { cur_tok = lex.get_token(); }
   inline int get_cur_prior() {
@@ -66,7 +72,7 @@ class Parser {
     return res;
   }
 
-  static void expand_comma_expr(expr_t expr, const std::function<void(expr_t)>& func) {
+  void expand_comma_expr(expr_t expr, const std::function<void(expr_t)>& func) {
     BinExprNode *ptr = nullptr;
     if (instof<BinExprNode>(*expr) &&
         (ptr = dynamic_cast<BinExprNode*>(expr.get()))->op == ",") {
@@ -78,7 +84,7 @@ class Parser {
   }
 
   // */&... {id} [A][B]...
-  static std::string parse_id_type(expr_t expr, llvm::Type *&ty) {
+  std::string parse_id_type(expr_t expr, llvm::Type *&ty) {
     if (auto ptr = dynamic_cast<VarExprNode*>(expr.get()))
       return ptr->get_name();
     
@@ -136,23 +142,25 @@ public:
   Parser(Lexer& lex) : lex(lex) {  }
 
   node_t parse_num() {
-    node_t ptr = std::make_unique<NumExprNode>(cur_tok.val);
+    node_t ptr = std::make_unique<NumExprNode>(cur_tok.val, cur_tok.loc);
     return adv(), std::move(ptr);
   }
 
   node_t parse_char() {
     node_t ptr = std::make_unique<CharExprNode>(
-      std::any_cast<char>(cur_tok.val));
+      std::any_cast<char>(cur_tok.val), cur_tok.loc);
     return adv(), std::move(ptr);
   }
 
   node_t parse_str() {
     node_t ptr = std::make_unique<StringExprNode>(
-      std::any_cast<const std::string&>(cur_tok.val));
+      std::any_cast<const std::string&>(cur_tok.val),
+      cur_tok.loc);
     return adv(), std::move(ptr);
   }
 
   node_t parse_paren() {
+    SourceLoc loc_start = cur_tok.loc;
     adv(); // (
     node_t expr = parse_expr();
     if (!expr) return nullptr;
@@ -162,13 +170,15 @@ public:
 
     adv(); // )
     
-    return std::make_unique<ParenExprNode>(std::move(expr));
+    return std::make_unique<ParenExprNode>(std::move(expr), loc_start);
   }
 
   node_t try_parse_postfix(node_t core) {
     if (!core)
       return log_err<object_invalid>("the core argument is invalid!");
     
+    SourceLoc loc_start = cur_tok.loc;
+
     if (cur_tok.is_tool("["))
     {
       adv(); // '['
@@ -177,7 +187,7 @@ public:
         return log_err("unexpected token, expected ']'.");
       adv(); // ']'
       core =
-          std::make_unique<SubScriptExprNode>(std::move(core), std::move(idx));
+          std::make_unique<SubScriptExprNode>(std::move(core), std::move(idx), loc_start);
     }
     else if (cur_tok.is_tool("("))
     {
@@ -188,7 +198,7 @@ public:
         throw syntax_error("function reference calling not supported until now!");
 
       if (cur_tok.is_tool(")"))
-        return (adv(), std::make_unique<CallExprNode>(ptrVarNode->get_name(), std::move(args)));
+        return (adv(), std::make_unique<CallExprNode>(ptrVarNode->get_name(), std::move(args), loc_start));
 
       // (((A,B),C),D)
       auto args_expr = parse_expr();
@@ -202,14 +212,14 @@ public:
       });
 
 
-      return std::make_unique<CallExprNode>(ptrVarNode->get_name(), std::move(args));
+      return std::make_unique<CallExprNode>(ptrVarNode->get_name(), std::move(args), loc_start);
     }
     // self in/de-crement afterward
     else if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
       bool is_add = cur_tok.type == tok_addadd;
       adv();
       return std::make_unique<SelfBackCreExprNode>(
-        static_unique_ptr_cast<ExprNode>(std::move(core)), is_add);
+        static_unique_ptr_cast<ExprNode>(std::move(core)), is_add, loc_start);
     }
 
     // todo: member access "." and "->"
@@ -223,23 +233,23 @@ public:
 
   node_t parse_id() {
     auto cur_id = std::any_cast<const std::string&>(cur_tok.val);
+    node_t L = std::make_unique<VarExprNode>(cur_id, cur_tok.loc);
     adv();
-
-    node_t L = std::make_unique<VarExprNode>(cur_id);
 
     return L;
   }
 
   expr_t parse_addr() {
     adv(); // '&'
+    SourceLoc loc_start = cur_tok.loc;
     expr_t operand = parse_expr(unary_precedence);
     
-    return std::make_unique<UnaryExprNode>("&", std::move(operand));
+    return std::make_unique<UnaryExprNode>("&", std::move(operand), loc_start);
   }
 
   node_t parse_core() {
     if (cur_tok.is_tool(";"))
-      return std::make_unique<NullStmt>();
+      return std::make_unique<NullStmt>(cur_tok.loc);
     if (cur_tok.type == tok_id)
       return parse_id();
     if (cur_tok.type == tok_lit_num)
@@ -248,11 +258,13 @@ public:
       return parse_char();
     if (cur_tok.type == tok_lit_string)
       return parse_str();
-    if (cur_tok.type == tok_kw_true)
-      return adv(), std::make_unique<BoolExprNode>(true);
-    if (cur_tok.type == tok_kw_false)
-      return adv(), std::make_unique<BoolExprNode>(false);
-    if (cur_tok.type == tok_kw_if)
+    if (cur_tok.type == tok_kw_true) {
+      SourceLoc loc_start = cur_tok.loc;
+      return adv(), std::make_unique<BoolExprNode>(true, loc_start);
+    } if (cur_tok.type == tok_kw_false) {
+      SourceLoc loc_start = cur_tok.loc;
+      return adv(), std::make_unique<BoolExprNode>(false, loc_start);
+    } if (cur_tok.type == tok_kw_if)
       return parse_if();
     if (cur_tok.type == tok_kw_for)
       return parse_for();
@@ -260,17 +272,20 @@ public:
       return parse_while();
     if (cur_tok.type == tok_kw_return)
       return parse_return();
-    if (cur_tok.type == tok_kw_break)
-      return adv(), std::make_unique<LoopJumpStmtNode>(true);
-    if (cur_tok.type == tok_kw_continue)
-      return adv(), std::make_unique<LoopJumpStmtNode>(false);
-    if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
+    if (cur_tok.type == tok_kw_break) {
+      SourceLoc loc_start = cur_tok.loc;
+      return adv(), std::make_unique<LoopJumpStmtNode>(true, loc_start);
+    } if (cur_tok.type == tok_kw_continue) {
+      SourceLoc loc_start = cur_tok.loc;
+      return adv(), std::make_unique<LoopJumpStmtNode>(false, loc_start);
+    } if (cur_tok.type == tok_addadd || cur_tok.type == tok_subsub) {
       bool is_add = cur_tok.type == tok_addadd;
+      SourceLoc loc_start = cur_tok.loc;
       adv();
       auto left = parse_expr();
       if (!left->is_left())
         return log_err("invalid expression for addadd, expected a left value.");
-      return std::make_unique<SelfFrontCreExprNode>(std::move(left), is_add);
+      return std::make_unique<SelfFrontCreExprNode>(std::move(left), is_add, loc_start);
     }
     if (cur_tok.is_type() || cur_tok.is_spec())
       return parse_dvar();
@@ -280,14 +295,17 @@ public:
       return parse_block();
     
     // unary
-    if (cur_tok.is_tool("-"))
-      return adv(), std::make_unique<BinExprNode>("*", std::make_unique<NumExprNode>(-1), parse_expr(unary_precedence));
+    if (cur_tok.is_tool("-")) {
+      SourceLoc loc_start = cur_tok.loc;
+      return adv(), std::make_unique<BinExprNode>("*", std::make_unique<NumExprNode>(-1, loc_start), parse_expr(unary_precedence), loc_start);
+    }
     if (cur_tok.type == tok_other
         && cur_tok.val.type() == typeid(std::string)
         && unary_op.find(std::any_cast<const std::string&>(cur_tok.val))
             != unary_op.end()) {
       auto un_op = std::any_cast<const std::string&>(cur_tok.val);
-      return adv(), std::make_unique<UnaryExprNode>(un_op, parse_expr(unary_precedence));
+      SourceLoc loc_start = cur_tok.loc;
+      return adv(), std::make_unique<UnaryExprNode>(un_op, parse_expr(unary_precedence), loc_start);
     }
     // if (cur_tok.is_tool("&"))
     //   return parse_addr();
@@ -314,6 +332,7 @@ public:
   // r_b = 1 ==> (for function) brace is necessary
   block_t parse_block(bool require_brace = false) {
     std::vector<stmt_t> v;
+    SourceLoc loc_start = cur_tok.loc;
     if (cur_tok.is_tool("{")) {
       adv();
       while (1) {
@@ -327,7 +346,7 @@ public:
             "unexpected token, a left brace is expected for the start of the block.");
       v.push_back(parse_stmt());
     }
-    return std::make_unique<BlockNode>(std::move(v));
+    return std::make_unique<BlockNode>(std::move(v), loc_start);
   }
 
   // lhs binop(pr) rest_section
@@ -336,6 +355,7 @@ public:
     std::vector<std::pair<std::string, expr_t>> layer;
 
     while (1) {
+      SourceLoc loc_start = cur_tok.loc;
       int pr = get_cur_prior();
 
       if (pr < oppr)
@@ -361,7 +381,7 @@ public:
         rhs = parse_binrhs(pr + !is_right_asso, std::move(rhs));
         if (!rhs) return nullptr;
       }
-      lhs = std::make_unique<BinExprNode>(op, std::move(lhs), std::move(rhs));
+      lhs = std::make_unique<BinExprNode>(op, std::move(lhs), std::move(rhs), loc_start);
     }
   }
 
@@ -371,6 +391,7 @@ public:
       return log_err("unexpected token, expected a type name.");
     auto rtn_ty = cur_tok.type;
 
+    SourceLoc loc_start = cur_tok.loc;
     adv();
     if (cur_tok.type != tok_id)
       return log_err("unexpected token, expected an identifier.");
@@ -411,7 +432,7 @@ public:
         adv();
       }
     adv();
-    return std::make_unique<ProtoNode>(id, rtn_ty, args, varargs);
+    return std::make_unique<ProtoNode>(id, rtn_ty, args, varargs, loc_start);
   }
 
   // extern func_prototype
@@ -426,7 +447,8 @@ public:
   func_t parse_def() {
     if (cur_tok.type != tok_kw_def)
       return log_err("unexpected token, expected the keyword def.");
-    
+
+    SourceLoc loc_start = cur_tok.loc;
     adv(); // func_prototype
     proto_t proto = parse_proto();
     if (!proto) return nullptr;
@@ -434,12 +456,14 @@ public:
     auto body = parse_block(true);
     if (!body) return nullptr;
 
-    return std::make_unique<FuncNode>(std::move(proto), std::move(body));
+    return std::make_unique<FuncNode>(std::move(proto), std::move(body), loc_start);
   }
 
   node_t parse_if() {
     if (cur_tok.type != tok_kw_if)
       return log_err("unexpected token, expected the keyword if.");
+
+    SourceLoc loc_start = cur_tok.loc;
     adv(); // cond
 
     if (cur_tok.type != tok_other || !cur_tok.is_tool("("))
@@ -463,10 +487,11 @@ public:
       if (!els ) return nullptr;
     } else els = nullptr;
 
-    return std::make_unique<IfStmtNode>(std::move(cond), std::move(then), std::move(els));
+    return std::make_unique<IfStmtNode>(std::move(cond), std::move(then), std::move(els), loc_start);
   }
 
   node_t parse_for() {
+    SourceLoc loc_start = cur_tok.loc;
     adv(); // for
     if (!cur_tok.is_tool("("))
       log_err("unexpected token, expected the token '('.");
@@ -480,14 +505,14 @@ public:
 
     // for (...; ; ...) -> for (...; true; ...)
     if (instof<NullStmt*>(cond.get()))
-      cond = std::make_unique<BoolExprNode>(true);
+      cond = std::make_unique<BoolExprNode>(true, cur_tok.loc);
 
     if (!cur_tok.is_tool(";"))
       log_err("unexpected token, expected the token ';'.");
     
     adv(); // ;
 
-    stmt_t every = cur_tok.is_tool(")") ? std::make_unique<NullStmt>() : parse_stmt();
+    stmt_t every = cur_tok.is_tool(")") ? std::make_unique<NullStmt>(cur_tok.loc) : parse_stmt();
     if (!every) return nullptr;
 
     if (!cur_tok.is_tool(")"))
@@ -498,10 +523,11 @@ public:
     if (!body) return nullptr;
 
     return std::make_unique<ForStmtNode>(std::move(start),
-           std::move(cond), std::move(every), std::move(body));
+           std::move(cond), std::move(every), std::move(body), loc_start);
   }
 
   node_t parse_while() {
+    SourceLoc loc_start = cur_tok.loc;
     adv(); // while
     if (!cur_tok.is_tool("("))
       log_err("unexpected token, expected the token '('.");
@@ -523,22 +549,24 @@ public:
     auto body = parse_block();
     if (!body) return nullptr;
 
-    return std::make_unique<ForStmtNode>(std::make_unique<NullStmt>(),
-           std::move(cond), std::make_unique<NullStmt>(), std::move(body));
+    return std::make_unique<ForStmtNode>(std::make_unique<NullStmt>(SourceLoc{-1,-1}),
+           std::move(cond), std::make_unique<NullStmt>(SourceLoc{-1,-1}), std::move(body), loc_start);
   }
 
   stmt_t parse_return() {
-    adv();
+    SourceLoc loc_start = cur_tok.loc;
+    adv(); // return
 
     auto V = parse_expr();
     if (cur_tok.type == tok_other
       && cur_tok.is_tool(";"))
       adv();
     
-    return std::make_unique<RetStmtNode>(std::move(V));
+    return std::make_unique<RetStmtNode>(std::move(V), loc_start);
   }
 
   stmt_t parse_dvar() {
+    SourceLoc loc_start = cur_tok.loc;
     bool is_const = false;
     if (cur_tok.type == tok_kw_const) is_const = true, adv();
 
@@ -552,7 +580,7 @@ public:
     if (!cur_tok.is_tool(";"))
       return log_err("unexpected token, expected a ';'.");
     
-    expand_comma_expr(std::move(decls), [ty, &lst](expr_t expr) {
+    expand_comma_expr(std::move(decls), [this, ty, &lst](expr_t expr) {
       std::pair<Var, expr_t> ele{{"", nullptr}, nullptr};
       if (auto ptr = dynamic_cast<BinExprNode*>(expr.get())) {
         if (ptr->op != "=")
@@ -562,11 +590,11 @@ public:
         expr = std::move(ptr->left);
       }
       ele.first.type = ty;
-      ele.first.name = parse_id_type(std::move(expr), ele.first.type);
+      ele.first.name = this->parse_id_type(std::move(expr), ele.first.type);
       lst.push_back(std::move(ele));
     });
 
-    return std::make_unique<VarDeclNode>(lst, is_const);
+    return std::make_unique<VarDeclNode>(lst, is_const, loc_start);
   }
 
   // global scope (naked) codes, considered as a function
@@ -577,11 +605,13 @@ public:
     // autoly assign a prototype
     proto_t proto = std::make_unique<ProtoNode>(
       "__top_level__", tok_kw_number,
-      std::vector<Argu>(), false
+      std::vector<Argu>(), false,
+      SourceLoc{-1,-1}
     );
     return std::make_unique<FuncNode>(
       std::move(proto),
-      std::make_unique<BlockNode>(std::move(v))
+      std::make_unique<BlockNode>(std::move(v), SourceLoc{-1,-1}),
+      SourceLoc{-1,-1}
     );
   }
 
@@ -629,7 +659,7 @@ public:
             throw syntax_error("the return type of the main function should be int32.");
 
           def->get_body()->get_list().push_back(
-            std::make_unique<RetStmtNode>(std::make_unique<NumExprNode>(0)));
+            std::make_unique<RetStmtNode>(std::make_unique<NumExprNode>(0, SourceLoc{-1,-1}), SourceLoc{-1,-1}));
         }
         
         if (!def->codegen()) return;

@@ -131,12 +131,13 @@ inline tag_tok get_tok_of_type(llvm::Type* t) {
 struct Token {
   tag_tok type;
   std::any val;
+  SourceLoc loc;
 
   Token(tag_tok type) : type(type),
-    val(std::string("no value")) {  }
+    val(std::string("no value")), loc({0,0}) {  }
   template <class token_t>
-  Token(tag_tok type, const token_t& cont)
-    : type(type), val(token_t(cont)) {  }
+  Token(tag_tok type, const token_t& cont, SourceLoc loc = {0,0})
+    : type(type), val(token_t(cont)), loc(loc) {  }
   Token(const Token& rhs) = default;
   Token(Token&& rhs) = default;
   Token& operator=(Token &&rhs) = default;
@@ -202,6 +203,8 @@ public:
       return tok_invalid;
     }
 
+    SourceLoc loc_start = file.cur_loc;
+
     if (isalpha(~file) || ~file == '_') {
       tmp_str = ~file;
       while (isalnum(!file) || ~file == '_')
@@ -260,7 +263,7 @@ public:
         curx = tok_kw_continue;
       } else curx = tok_id;
 
-      return { curx, tmp_str };
+      return { curx, tmp_str, loc_start };
     }
 
     if (isdigit(~file) || ~file == '.') {
@@ -278,7 +281,7 @@ public:
       upd();
 
       if (tmp_str == "...")
-        return { tok_varargs, tmp_str };
+        return { tok_varargs, tmp_str, loc_start };
       
       size_t verify_dot = 0, verify_e = 0;
       for (char ch : tmp_str) {
@@ -293,14 +296,14 @@ public:
         if (!isdigit(ch) && ch != '.' && ch != 'e' && ch != '-')
           throw syntax_error("invalid literal float number.");
       }
-      if (verify_dot || verify_e) return { tok_lit_num, std::strtod(tmp_str.c_str(), nullptr) };
+      if (verify_dot || verify_e) return { tok_lit_num, std::strtod(tmp_str.c_str(), nullptr), loc_start };
       else {
         if (cnt_ch[0]) {
-          if (cnt_ch[1] == 2) return { tok_lit_num, (uint64_t)std::strtoull(tmp_str.c_str(), nullptr, 10) };
-          return { tok_lit_num, (uint)std::strtoul(tmp_str.c_str(), nullptr, 10) };
+          if (cnt_ch[1] == 2) return { tok_lit_num, (uint64_t)std::strtoull(tmp_str.c_str(), nullptr, 10), loc_start };
+          return { tok_lit_num, (uint)std::strtoul(tmp_str.c_str(), nullptr, 10), loc_start };
         } else {
-          if (cnt_ch[1] == 2) return { tok_lit_num, (int64_t)atoll(tmp_str.c_str()) };
-          return { tok_lit_num, (int)std::strtol(tmp_str.c_str(), nullptr, 10) };
+          if (cnt_ch[1] == 2) return { tok_lit_num, (int64_t)atoll(tmp_str.c_str()), loc_start };
+          return { tok_lit_num, (int)std::strtol(tmp_str.c_str(), nullptr, 10), loc_start };
         }
       }
     }
@@ -311,14 +314,16 @@ public:
     }
 
     if (~file == '\'') {
+      SourceLoc loc_start = file.cur_loc;
       char vch = !file, lch = !file;
       if (lch != '\'') throw syntax_error("no ending \' character.");
       !file;
       upd();
-      return { tok_lit_char, vch };
+      return { tok_lit_char, vch, loc_start };
     }
 
     if (~file == '\"') {
+      SourceLoc loc_start = file.cur_loc;
       tmp_str.clear();
       while (!file != '\n' && ~file != '\r' && ~file != '\"')
       {
@@ -338,48 +343,49 @@ public:
 
       }
       upd();
-      if (~file == '\"') { !file; return { tok_lit_string, tmp_str }; }
+      if (~file == '\"') { !file; return { tok_lit_string, tmp_str, loc_start }; }
       throw syntax_error("no ending \" character.");
     }
 
-    if (~file == EOF) return tok_eof;
+    if (~file == EOF) return { tok_eof, -1, file.cur_loc };
 
     // other symbols
     char tmp_ch = ~file;
+    loc_start = file.cur_loc;
     !file;
 
     if (~file == tmp_ch) {
-      if (tmp_ch == '+') { !file; return tok_addadd; }
-      if (tmp_ch == '-') { !file; return tok_subsub; }
+      if (tmp_ch == '+') { !file; return { tok_addadd, std::string("++"), loc_start }; }
+      if (tmp_ch == '-') { !file; return { tok_subsub, std::string("--"), loc_start }; }
     }
     if ((tmp_ch == '+' || tmp_ch == '-') && ~file == '=')
-      { !file; return { tok_other, tmp_ch + std::string("=") }; }
+      { !file; return { tok_other, tmp_ch + std::string("="), loc_start }; }
     
     // bit operators
     if (tmp_ch == '<') if (~file == '<') {
-      if (!file == '=') { !file; return { tok_other, std::string("<<=") }; }
-      else return { tok_other, std::string("<<") };
+      if (!file == '=') { !file; return { tok_other, std::string("<<="), loc_start }; }
+      else return { tok_other, std::string("<<"), loc_start };
     } if (tmp_ch == '>') if (~file == '>') {
-      if (!file == '=') { !file; return { tok_other, std::string(">>=") }; }
-      else return { tok_other, std::string(">>") };
+      if (!file == '=') { !file; return { tok_other, std::string(">>="), loc_start }; }
+      else return { tok_other, std::string(">>"), loc_start };
     } if (tmp_ch == '&') if (~file == '&') {
-      if (!file == '=') { !file; return { tok_other, std::string("&&=") }; }
-      else return { tok_other, std::string("&&") };
+      if (!file == '=') { !file; return { tok_other, std::string("&&="), loc_start }; }
+      else return { tok_other, std::string("&&"), loc_start };
     } if (tmp_ch == '|') if (~file == '|') {
-      if (!file == '=') { !file; return { tok_other, std::string("||=") }; }
-      else return { tok_other, std::string("||") };
+      if (!file == '=') { !file; return { tok_other, std::string("||="), loc_start }; }
+      else return { tok_other, std::string("||"), loc_start };
     }
     
     // comparison
     if (tmp_ch == '<' || tmp_ch == '>') if (~file == '=')
-      { !file; return { tok_other, tmp_ch + std::string("=") }; }
+      { !file; return { tok_other, tmp_ch + std::string("="), loc_start }; }
 
     if (tmp_ch == '=') if (~file == '=')
-      { !file; return { tok_other, std::string("==") }; }
+      { !file; return { tok_other, std::string("=="), loc_start }; }
     if (tmp_ch == '!') if (~file == '=')
-      { !file; return { tok_other, std::string("!=") }; }
+      { !file; return { tok_other, std::string("!="), loc_start }; }
 
-    return { tok_other, std::string("") + tmp_ch };
+    return { tok_other, std::string("") + tmp_ch, loc_start };
   }
 
 };
