@@ -314,11 +314,11 @@ public:
   expr_t val;
 
   ParenExprNode(expr_t val, SourceLoc loc) : val(std::move(val)), LeftExprNode(loc) {  }
-  virtual llvm::Type* get_type() const override { return ty::getInt8Ty(g_context); }
+  virtual llvm::Type* get_type() const override { return val->get_type(); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"ParenExpr\", \"val\": '";
+    os << "{ \"node_type\": \"ParenExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": ";
     val->output();
-    os << "' }";
+    os << " }";
   }
   virtual llvm::Value* codegen() override { return val->codegen(); }
   virtual bool is_left() const override { return val->is_left(); }
