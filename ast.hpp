@@ -219,7 +219,7 @@ public:
   NullStmt(SourceLoc loc) : StmtNode(loc) { this->loc = loc; }
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"NullStmt\" }";
+    os << "{ \"node_type\": \"NullStmt\", \"loc\": [" << loc.line << ',' << loc.column << "] }";
   }
   virtual llvm::Value* codegen() override {
     return llvm::UndefValue::get(get_type());
@@ -240,7 +240,7 @@ public:
     else return log_err("invalid val type.");
   }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"NumExpr\", \"val\": ";
+    os << "{ \"node_type\": \"NumExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": ";
     print_any(val);
     os << ", \"val_type\": \"" << textize_object(get_type()) << "\"";
     os << " }";
@@ -269,7 +269,7 @@ public:
   CharExprNode(char val, SourceLoc loc) : val(val), ExprNode(loc) {  }
   virtual llvm::Type* get_type() const override { return ty::getInt8Ty(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"CharExpr\", \"val\": \"" << val << "\" }";
+    os << "{ \"node_type\": \"CharExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": \"" << val << "\" }";
   }
   virtual llvm::Value* codegen() override {
     return get_const_int_value(val, 8);
@@ -286,7 +286,7 @@ public:
   virtual llvm::Type* get_type() const override { return llvm::ArrayType::get(ty::getInt8Ty(g_context), val.size()); }
   virtual void output(std::ostream & os = std::cerr) override {
     // we need to display raw string
-    os << "{ \"node_type\": \"StringExpr\", \"val\": \"" << get_raw_string(val) << "\" }";
+    os << "{ \"node_type\": \"StringExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": \"" << get_raw_string(val) << "\" }";
   }
   virtual llvm::Value* codegen() override {
     return g_builder.CreateGlobalStringPtr(val);
@@ -301,7 +301,7 @@ public:
   BoolExprNode(bool val, SourceLoc loc) : val(val), ExprNode(loc) {  }
   virtual llvm::Type* get_type() const override { return ty::getInt1Ty(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"BoolExpr\", \"val\": " << (val ? "true" : "false") << " }";
+    os << "{ \"node_type\": \"BoolExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": " << (val ? "true" : "false") << " }";
   }
   virtual llvm::Value* codegen() override {
     return get_const_int_value(val, 1);
@@ -339,7 +339,7 @@ public:
     return log_err("undefined variable (maybe haven't codegen it.)");
   }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"VarExpr\", \"id\": \"" << id << "\" }";
+    os << "{ \"node_type\": \"VarExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"id\": \"" << id << "\" }";
   }
 
   virtual bool is_global() const {
@@ -424,7 +424,7 @@ public:
     return log_err("invalid type for subscript member access!");
   }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"SubScriptExprNode\", \"arr\": ";
+    os << "{ \"node_type\": \"SubScriptExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"arr\": ";
     arr->output();
     os << ", \"index\": ";
     idx->output();
@@ -503,7 +503,7 @@ public:
   VarDeclNode(list_t& lst, bool is_const = false, SourceLoc loc = {0,0}) : lst(std::move(lst)), is_const(is_const), DeclNode(loc) {  }
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"VarDeclNode\", \"lst\": ";
+    os << "{ \"node_type\": \"VarDecl\", \"loc\": [" << loc.line << ',' << loc.column << "], \"lst\": ";
     output_list<ele_t>(lst, [](auto& x, auto& os) {
       os << "{ \"name\": \"" << x.first.name << "\", "
          << "\"type\": \"" << x.first.get_type_name() << "\", "
@@ -600,7 +600,7 @@ public:
   }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"BinExpr\", \"operator\": \"" << op << "\", \"left\": ";
+    os << "{ \"node_type\": \"BinExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"operator\": \"" << op << "\", \"left\": ";
     left->output();
     os << ", \"right\": ";
     right->output();
@@ -739,7 +739,7 @@ public:
   virtual llvm::Value* codegen_left() override {
     if (left->is_left()) {
       if (op.back() == '=')
-      return dynamic_cast<ILeftValue*>(left.get())->codegen_left();
+        return dynamic_cast<ILeftValue*>(left.get())->codegen_left();
       else if (op == ",")
         return dynamic_cast<ILeftValue*>(right.get())->codegen_left();
     }
@@ -760,7 +760,7 @@ public:
   virtual llvm::Type* get_type() const override { return get_func(func)->getReturnType(); }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"CallExpr\", \"func_name\": \"" << func << "\", \"args\": ";
+    os << "{ \"node_type\": \"CallExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"func_name\": \"" << func << "\", \"args\": ";
     output_list<expr_t>(args, [](auto &x, auto &os){ x->output(os); }, os);
     os << " }";
   }
@@ -809,7 +809,7 @@ public:
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"RetStmt\", \"val\": ";
+    os << "{ \"node_type\": \"RetStmt\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": ";
     val->output();
     os << " }";
   }
@@ -842,7 +842,7 @@ public:
   virtual ~BlockNode() = default;
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"BlockNode\", \"list\": ";
+    os << "{ \"node_type\": \"Block\", \"loc\": [" << loc.line << ',' << loc.column << "], \"list\": ";
     output_list<stmt_t>(v, [](auto& x, auto& os){ x->output(os); }, os);
     os << " }";
   }
@@ -881,7 +881,7 @@ public:
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"IfStmt\", \"cond\": ";
+    os << "{ \"node_type\": \"IfStmt\", \"loc\": [" << loc.line << ',' << loc.column << "], \"cond\": ";
     cond->output();
     os << ", \"then\": ";
     then->output();
@@ -968,7 +968,7 @@ public:
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"ForStmt\", \"start\": ";
+    os << "{ \"node_type\": \"ForStmt\", \"loc\": [" << loc.line << ',' << loc.column << "], \"start\": ";
     start->output();
     os << ", \"cond\": ";
     cond->output();
@@ -1056,7 +1056,7 @@ public:
 
   // { Prototype, "id": "cos", "type": "number", "args": ["number theta"] }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"Prototype\", \"id\": \"" << id << "\""
+    os << "{ \"node_type\": \"Prototype\", \"loc\": [" << loc.line << ',' << loc.column << "], \"id\": \"" << id << "\""
        << ", \"type\": \"" << map_tok[type] << "\"";
     if (args.size()) {
       os << ", \"args\": ";
@@ -1101,7 +1101,7 @@ public:
 
   // { Function, { Prototype, $...$ }, { Body, "..." } }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"Function\", \"prototype\": ";
+    os << "{ \"node_type\": \"Function\", \"loc\": [" << loc.line << ',' << loc.column << "], \"prototype\": ";
     if (proto) proto->output(os);
     else g_protos[name]->output(os);
     os << ", \"body\": ";
@@ -1220,7 +1220,7 @@ public:
   }
 
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"UnaryExpr\", \"operator\": '"
+    os << "{ \"node_type\": \"UnaryExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"operator\": '"
     << op << "', \"operand\": ";
     operand->output(os);
     os << " }";
@@ -1245,16 +1245,16 @@ public:
   }
 };
 
-class SelfFrontCreExprNode : public ExprNode, public ILeftValue {
+class SelfFrontCreExprNode : public LeftExprNode {
   expr_t left;
   bool is_add;
 public:
   SelfFrontCreExprNode(expr_t left, bool is_add, SourceLoc loc)
-      : left(std::move(left)), is_add(is_add), ExprNode(loc) {  }
+      : left(std::move(left)), is_add(is_add), LeftExprNode(loc) {  }
 
   virtual llvm::Type* get_type() const override { return left->get_type(); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"Self" << (is_add ? "In" : "De") << "crementExpr\", \"left\": ";
+    os << "{ \"node_type\": \"Self" << (is_add ? "In" : "De") << "crementExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"left\": ";
     left->output(os);
     os << " }";
   }
@@ -1285,7 +1285,7 @@ public:
   virtual llvm::Type* get_type() const override { return left->get_type(); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"SelfBack" << (is_add ? "In" : "De")
-       << "crementExpr\", \"left\": ";
+       << "crementExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"left\": ";
     left->output(os);
     os << " }";
   }
@@ -1307,7 +1307,7 @@ public:
 
   virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
-    os << "{ \"node_type\": \"" << (is_break ? "BreakStmt" : "ContinueStmt") << "\" }";
+    os << "{ \"node_type\": \"" << (is_break ? "BreakStmt" : "ContinueStmt") << "\", \"loc\": [" << loc.line << ',' << loc.column << "] }";
   }
 
   virtual llvm::Value* codegen() override {
