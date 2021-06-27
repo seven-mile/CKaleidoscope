@@ -733,12 +733,16 @@ public:
 
   virtual bool is_left() const override {
     return (op == "=" && left->is_left())
-        || (op == "," && right->is_left());
+        || (op == "," && right->is_left()) || (op[0] != '=' && op.back() == '=');
   }
 
   virtual llvm::Value* codegen_left() override {
-    if (op == "=" && left->is_left())
+    if (left->is_left()) {
+      if (op.back() == '=')
       return dynamic_cast<ILeftValue*>(left.get())->codegen_left();
+      else if (op == ",")
+        return dynamic_cast<ILeftValue*>(right.get())->codegen_left();
+    }
     
     return log_err("invalid left value expr!");
   }
