@@ -73,15 +73,16 @@ inline std::string textize_object(T* x) {
 }
 
 // print R("\n") as "\\n"
-inline std::string get_raw_string(std::string str) {
-  for (auto it = str.begin(); it < str.end(); it++)
-    switch (*it) {
-      case '\n': str.replace(it, it+1, "\\n"); break;
-      case '\r': str.replace(it, it+1, "\\r"); break;
-      case '\t': str.replace(it, it+1, "\\t"); break;
-      default: break;
+inline std::string get_raw_string(const std::string& str) {
+  std::string res = "";
+  for (char c : str)
+    switch (c) {
+      case '\n': res.append("\\n"); break;
+      case '\r': res.append("\\r"); break;
+      case '\t': res.append("\\t"); break;
+      default: res.push_back(c); break;
     }
-  return str;
+  return res;
 }
 
 inline llvm::ConstantInt* get_const_int_value(int64_t v, int b = 32, bool is_signed = true) {
