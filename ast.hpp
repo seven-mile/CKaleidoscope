@@ -1254,6 +1254,8 @@ public:
     os << " }";
   }
   virtual llvm::Value* codegen() override {
+    if (!left->is_left())
+      return log_err("invalid expression for addadd, expected a left value.");
     auto P = left->codegen();
     auto Q = g_builder.CreateAdd(P, llvm::ConstantInt::get(g_context, llvm::APInt(32, is_add ? 1 : -1)), "heymine");
     auto L = dynamic_cast<ILeftValue*>(left.get())->codegen_left();
@@ -1262,6 +1264,8 @@ public:
     return Q;
   }
   virtual llvm::Value* codegen_left() override {
+    if (!left->is_left())
+      return log_err("invalid expression for addadd, expected a left value.");
     return dynamic_cast<ILeftValue*>(left.get())->codegen_left();
   }
 };

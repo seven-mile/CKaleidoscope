@@ -282,9 +282,7 @@ public:
       bool is_add = cur_tok.type == tok_addadd;
       SourceLoc loc_start = cur_tok.loc;
       adv();
-      auto left = parse_expr();
-      if (!left->is_left())
-        return log_err("invalid expression for addadd, expected a left value.");
+      auto left = parse_expr(unary_precedence);
       return std::make_unique<SelfFrontCreExprNode>(std::move(left), is_add, loc_start);
     }
     if (cur_tok.is_type() || cur_tok.is_spec())
