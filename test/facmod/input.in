@@ -1,8 +1,8 @@
 extern int printf(...);
 extern int scanf(...);
 
-const int M = 1579;
-int fac[1001], ifac[1001];
+const int N = 1e6+3, M = 998244353;
+int fac[N], ifac[N];
 
 def int rd() {
   int tmp;
@@ -13,8 +13,8 @@ def int rd() {
 def int qpow(int a, int b) {
   int r = 1;
   for (; b > 0; b = b / 2) {
-    if (b % 2 > 0) r = r * a % M;
-    a = a * a % M;
+    if (b % 2 > 0) r = 1ll * r * a % M;
+    a = 1ll * a * a % M;
   }
   return r;
 }
@@ -24,13 +24,15 @@ def int main() {
   fac[1] = 1;
   ifac[0] = 1;
 
-  for (int i=2; i<=1000; i=i+1)
+  int n = rd();
+
+  for (int i=2; i<=n; i=i+1)
     fac[i] = 1ll * fac[i-1] * i % M;
-  ifac[1000] = qpow(fac[1000], M-2);
-  for (int i=1000-1; i; i--)
+  ifac[n] = qpow(fac[n], M-2);
+  for (int i=n-1; i; i--)
     ifac[i] = ifac[i+1] * (i+1ll) % M;
   
-  for (int i=1; i<=30; i=i+1)
+  for (int i=n-30; i<=n; i=i+1)
     printf("%d * %d = %lld\n", fac[i], ifac[i], 1ll*fac[i]*ifac[i]%M);
 
   return 0;

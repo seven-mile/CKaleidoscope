@@ -1,4 +1,5 @@
 extern int printf(string fmt, ...);
+extern int eprintf(string fmt, ...);
 extern int scanf(string fmt, ...);
 extern char getchar();
 extern char putchar();
@@ -47,17 +48,21 @@ def void ntt(int *a, int n, int d) {
     a[i] = a[rev[i]];
     a[rev[i]] = tmp;
   }
+  eprintf("a = %p, n = %d\n", a, n);
   for (int h=2; h<=n; h<<=1) {
+    eprintf("New H = %d\n", h);
     int wn = qpow(G, (M-1)/h);
     if (!~d) wn = qpow(wn, M-2);
     for (int j=0; j<n; j+=h) {
+      //if (j >= 196252) eprintf("New J = %d\n", j);
       int w = 1;
+      //if (j >= 196252) eprintf("I'm alive! 1. k=%d, k<%d.\n", j, j+(h>>1));
       for (int k=j; k<j+(h>>1); k++) {
-        cnt++;
-        if (cnt == 1000) {
-          printf("h = %d, j = %d, k = %d\n", h, j ,k);
-          cnt = 0;
-        }
+        //if (j > 195998 && cnt >= 100) {
+          //cnt++;
+          //eprintf("h = %d, j = %d, k = %d\n", h, j ,k);
+          //cnt = 0;
+        //}
         int x = a[k], y = 1ll*w*a[k+(h>>1)]%M;
         a[k] = st(x + y); a[k+(h>>1)] = st(x + M - y);
         w=1ll*w*wn%M;
@@ -71,7 +76,7 @@ int n, m, a[N], b[N];
 
 def int main() {
   puts("here! [1]");
-  freopen_in("./test/fft/kp.in");
+  freopen_in("./test/fft/data.in");
   puts("here! [2]");
   freopen_out("./test/fft/data.out");
   n = rd();
@@ -85,9 +90,9 @@ def int main() {
   ntt(b, lim, 1);
 
   for (int i=0; i<lim; i++) a[i] = 1ll*a[i]*b[i]%M;
-  puts("here! [3]");
+  eprintf("here! [3]\n");
   ntt(a, lim, -1);
-  puts("here! [4]");
+  eprintf("here! [4]\n");
   
   for (int i=0; i<=n+m; i++) printf("%d ", a[i]);
 
