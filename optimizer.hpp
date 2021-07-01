@@ -16,7 +16,7 @@ namespace zMile {
 
 static inline void init_module_and_pass_mgr() {
   g_module = std::make_unique<llvm::Module>("kaleido", g_context);
-  g_module->setDataLayout(g_jit->getTargetMachine().createDataLayout());
+  g_module->setDataLayout(g_jit->getDataLayout());
 
   g_fpm = std::make_unique<llvm::legacy::FunctionPassManager>(g_module.get());
 
@@ -25,7 +25,7 @@ static inline void init_module_and_pass_mgr() {
   g_fpm->add(llvm::createGVNPass());
   g_fpm->add(llvm::createCFGSimplificationPass());
   g_fpm->add(llvm::createSROAPass());
-  g_fpm->add(llvm::createDeadInstEliminationPass());
+  g_fpm->add(llvm::createDeadCodeEliminationPass());
   g_fpm->add(llvm::createPromoteMemoryToRegisterPass());
 
   g_fpm->doInitialization();

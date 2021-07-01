@@ -22,7 +22,7 @@
 
 namespace zMile {
 
-std::map<std::string, int> binop_prec
+inline std::map<std::string, int> binop_prec
 {
   {",", 1},
   {"=", 2},
@@ -44,7 +44,7 @@ std::map<std::string, int> binop_prec
   {"*", 13}, {"/", 13}, {"%", 13},
 };
 
-std::map<std::string, int> unary_op
+inline std::map<std::string, int> unary_op
 {
   {"+", 0}, {"-", 0},
   {"~", 0}, {"!", 0},
@@ -663,7 +663,10 @@ public:
         if (!def->codegen()) return;
 
         if (cmd) {
-          g_jit->addModule(std::move(g_module));
+          auto RT = zMile::g_jit->getMainJITDylib().createResourceTracker();
+          auto TSM = llvm::orc::ThreadSafeModule(
+            std::move(zMile::g_module), std::unique_ptr<llvm::LLVMContext>(&zMile::g_context));
+          g_exit_err(g_jit->addModule(std::move(TSM), RT));
           init_module_and_pass_mgr();
         }
       }

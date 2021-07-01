@@ -14,7 +14,7 @@
 #include "optimizer.hpp"
 
 // WARNING
-#include "stdlib.cpp"
+#include "stdlib.def"
 
 /// usage: CKaleidoscope                    == command line interface
 ///        CKaleidoscope source_file        == run source_file with jit engine
@@ -60,23 +60,24 @@ int main(const int nargs, const char *cargs[])
       exit(1);
     }
 
+    auto RT = zMile::g_jit->getMainJITDylib().createResourceTracker();
+    auto TSM = llvm::orc::ThreadSafeModule(
+      std::move(zMile::g_module), std::unique_ptr<llvm::LLVMContext>(&zMile::g_context));
+
     // add new module to submit the current module.
-    zMile::g_jit->addModule(std::move(zMile::g_module));
+    zMile::g_exit_err(zMile::g_jit->addModule(std::move(TSM), RT));
     zMile::init_module_and_pass_mgr();
   }
 
-  auto expr_main = zMile::g_jit->findSymbol("main");
-  if (auto ptr = expr_main.getAddress())
-  {
-    if (*ptr) {
-      auto res = ((int(*)())*ptr)();
+  if (auto expr_main = zMile::g_jit->lookup("main")) {
+    if (auto ptr = expr_main->getAddress()) {
+      auto res = ((int(*)())ptr)();
       std::cerr << "\nProgram exited with return value " << res << "." << std::endl;
     } else {
       std::cerr << "\nNo proper main function, exiting." << std::endl;
     }
-  }
-  else {
-    llvm::logAllUnhandledErrors(ptr.takeError(), llvm::errs(), "kaleido err: ");
+  } else {
+    llvm::logAllUnhandledErrors(expr_main.takeError(), llvm::errs(), "kaleido err: ");
     exit(1);
   }
 

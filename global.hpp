@@ -19,16 +19,22 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
 
+namespace llvm::orc {
+  struct KaleidoscopeJIT;
+}
+
 namespace zMile {
 
-llvm::LLVMContext g_context;
-llvm::IRBuilder<> g_builder(g_context);
-std::unique_ptr<llvm::Module> g_module;
-std::map<std::string, std::stack<llvm::Value*>> g_named_values;
-std::unique_ptr<llvm::legacy::FunctionPassManager> g_fpm;
-std::map<std::string, std::unique_ptr<class ProtoNode>> g_protos;
+inline llvm::LLVMContext g_context;
+inline llvm::IRBuilder<> g_builder(g_context);
+inline std::unique_ptr<llvm::Module> g_module;
+inline std::unique_ptr<llvm::orc::KaleidoscopeJIT> g_jit;
+inline std::map<std::string, std::stack<llvm::Value*>> g_named_values;
+inline std::unique_ptr<llvm::legacy::FunctionPassManager> g_fpm;
+inline std::map<std::string, std::unique_ptr<class ProtoNode>> g_protos;
 // nullptr: global block scope
-std::stack<class BlockNode*> g_bl_now;
-llvm::BasicBlock* g_bl_ret;
+inline std::stack<class BlockNode*> g_bl_now;
+inline llvm::BasicBlock* g_bl_ret;
 
+inline llvm::ExitOnError g_exit_err;
 }

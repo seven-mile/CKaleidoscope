@@ -1126,11 +1126,11 @@ public:
     std::vector<std::string> extra_pop;
 
     for (auto& arg: fun->args()) {
-      extra_pop.push_back(arg.getName());
+      extra_pop.push_back(arg.getName().str());
       auto alloca = create_alloca_in_entry(
-          fun, Var { arg.getName(), arg.getType() });
+          fun, Var { arg.getName().str(), arg.getType() });
       g_builder.CreateStore(&arg, alloca);
-      g_named_values[arg.getName()].push(alloca);
+      g_named_values[arg.getName().str()].push(alloca);
     }
     auto ret_ty = fun->getReturnType();
     llvm::AllocaInst* var_ret;
@@ -1232,8 +1232,8 @@ public:
     else if (op == "&") return dynamic_cast<ILeftValue*>(operand.get())->codegen_left();
     else if (op == "!") {
       if (t->isIntegerTy()) return g_builder.CreateICmpEQ(operand->codegen(), llvm::ConstantInt::get(t, 0));
-        else if (t->isDoubleTy()) return g_builder.CreateFCmpOEQ(operand->codegen(), llvm::ConstantFP::get(t, 0));
-        else return log_err("invalid logical not expression operand type!");
+      else if (t->isDoubleTy()) return g_builder.CreateFCmpOEQ(operand->codegen(), llvm::ConstantFP::get(t, 0));
+      else return log_err("invalid logical not expression operand type!");
     } else if (op == "~") {
       if (!t->isIntegerTy()) return log_err("only integer can get bitwise not.");
         return g_builder.CreateNot(operand->codegen());
