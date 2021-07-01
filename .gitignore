@@ -1,3 +1,6 @@
 .vscode/
 CMakeFiles/
 build/
+
+*.exe
+*.o

@@ -29,8 +29,6 @@
 #include <iostream>
 #include <memory>
 
-#include "global.hpp"
-
 namespace llvm {
 namespace orc {
 
@@ -105,6 +103,8 @@ public:
 } // end namespace llvm
 
 namespace zMile {
+
+inline std::unique_ptr<llvm::orc::KaleidoscopeJIT> g_jit;
 
 inline void init_jit_env() {
   llvm::InitializeNativeTarget();

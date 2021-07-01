@@ -1,0 +1,1628 @@
+{
+  "node_type": "Block",
+  "loc": [
+    45,
+    36
+  ],
+  "list": [
+    {
+      "node_type": "ForStmt",
+      "loc": [
+        46,
+        3
+      ],
+      "start": {
+        "node_type": "VarDecl",
+        "loc": [
+          46,
+          8
+        ],
+        "lst": [
+          {
+            "name": "i",
+            "type": "i32",
+            "init": {
+              "node_type": "NumExpr",
+              "loc": [
+                46,
+                14
+              ],
+              "val": 0,
+              "val_type": "i32"
+            }
+          }
+        ]
+      },
+      "cond": {
+        "node_type": "BinExpr",
+        "loc": [
+          46,
+          18
+        ],
+        "operator": "<",
+        "left": {
+          "node_type": "VarExpr",
+          "loc": [
+            46,
+            17
+          ],
+          "id": "i"
+        },
+        "right": {
+          "node_type": "VarExpr",
+          "loc": [
+            46,
+            19
+          ],
+          "id": "n"
+        }
+      },
+      "every": {
+        "node_type": "SelfBackIncrementExpr",
+        "loc": [
+          46,
+          23
+        ],
+        "left": {
+          "node_type": "VarExpr",
+          "loc": [
+            46,
+            22
+          ],
+          "id": "i"
+        }
+      },
+      "body": {
+        "node_type": "Block",
+        "loc": [
+          46,
+          27
+        ],
+        "list": [
+          {
+            "node_type": "IfStmt",
+            "loc": [
+              46,
+              27
+            ],
+            "cond": {
+              "node_type": "BinExpr",
+              "loc": [
+                46,
+                31
+              ],
+              "operator": "<",
+              "left": {
+                "node_type": "VarExpr",
+                "loc": [
+                  46,
+                  30
+                ],
+                "id": "i"
+              },
+              "right": {
+                "node_type": "SubScriptExpr",
+                "loc": [
+                  46,
+                  35
+                ],
+                "arr": {
+                  "node_type": "VarExpr",
+                  "loc": [
+                    46,
+                    32
+                  ],
+                  "id": "rev"
+                },
+                "index": {
+                  "node_type": "VarExpr",
+                  "loc": [
+                    46,
+                    36
+                  ],
+                  "id": "i"
+                }
+              }
+            },
+            "then": {
+              "node_type": "Block",
+              "loc": [
+                46,
+                40
+              ],
+              "list": [
+                {
+                  "node_type": "VarDecl",
+                  "loc": [
+                    47,
+                    5
+                  ],
+                  "lst": [
+                    {
+                      "name": "tmp",
+                      "type": "i32",
+                      "init": {
+                        "node_type": "SubScriptExpr",
+                        "loc": [
+                          47,
+                          16
+                        ],
+                        "arr": {
+                          "node_type": "VarExpr",
+                          "loc": [
+                            47,
+                            15
+                          ],
+                          "id": "a"
+                        },
+                        "index": {
+                          "node_type": "VarExpr",
+                          "loc": [
+                            47,
+                            17
+                          ],
+                          "id": "i"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "node_type": "BinExpr",
+                  "loc": [
+                    48,
+                    10
+                  ],
+                  "operator": "=",
+                  "left": {
+                    "node_type": "SubScriptExpr",
+                    "loc": [
+                      48,
+                      6
+                    ],
+                    "arr": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        48,
+                        5
+                      ],
+                      "id": "a"
+                    },
+                    "index": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        48,
+                        7
+                      ],
+                      "id": "i"
+                    }
+                  },
+                  "right": {
+                    "node_type": "SubScriptExpr",
+                    "loc": [
+                      48,
+                      13
+                    ],
+                    "arr": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        48,
+                        12
+                      ],
+                      "id": "a"
+                    },
+                    "index": {
+                      "node_type": "SubScriptExpr",
+                      "loc": [
+                        48,
+                        17
+                      ],
+                      "arr": {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          48,
+                          14
+                        ],
+                        "id": "rev"
+                      },
+                      "index": {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          48,
+                          18
+                        ],
+                        "id": "i"
+                      }
+                    }
+                  }
+                },
+                {
+                  "node_type": "BinExpr",
+                  "loc": [
+                    49,
+                    15
+                  ],
+                  "operator": "=",
+                  "left": {
+                    "node_type": "SubScriptExpr",
+                    "loc": [
+                      49,
+                      6
+                    ],
+                    "arr": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        49,
+                        5
+                      ],
+                      "id": "a"
+                    },
+                    "index": {
+                      "node_type": "SubScriptExpr",
+                      "loc": [
+                        49,
+                        10
+                      ],
+                      "arr": {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          49,
+                          7
+                        ],
+                        "id": "rev"
+                      },
+                      "index": {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          49,
+                          11
+                        ],
+                        "id": "i"
+                      }
+                    }
+                  },
+                  "right": {
+                    "node_type": "VarExpr",
+                    "loc": [
+                      49,
+                      17
+                    ],
+                    "id": "tmp"
+                  }
+                }
+              ]
+            },
+            "else": null
+          }
+        ]
+      }
+    },
+    {
+      "node_type": "CallExpr",
+      "loc": [
+        51,
+        10
+      ],
+      "func_name": "eprintf",
+      "args": [
+        {
+          "node_type": "StringExpr",
+          "loc": [
+            51,
+            11
+          ],
+          "val": "a = %p, n = %d\n"
+        },
+        {
+          "node_type": "VarExpr",
+          "loc": [
+            51,
+            31
+          ],
+          "id": "a"
+        },
+        {
+          "node_type": "VarExpr",
+          "loc": [
+            51,
+            34
+          ],
+          "id": "n"
+        }
+      ]
+    },
+    {
+      "node_type": "ForStmt",
+      "loc": [
+        52,
+        3
+      ],
+      "start": {
+        "node_type": "VarDecl",
+        "loc": [
+          52,
+          8
+        ],
+        "lst": [
+          {
+            "name": "h",
+            "type": "i32",
+            "init": {
+              "node_type": "NumExpr",
+              "loc": [
+                52,
+                14
+              ],
+              "val": 2,
+              "val_type": "i32"
+            }
+          }
+        ]
+      },
+      "cond": {
+        "node_type": "BinExpr",
+        "loc": [
+          52,
+          18
+        ],
+        "operator": "<=",
+        "left": {
+          "node_type": "VarExpr",
+          "loc": [
+            52,
+            17
+          ],
+          "id": "h"
+        },
+        "right": {
+          "node_type": "VarExpr",
+          "loc": [
+            52,
+            20
+          ],
+          "id": "n"
+        }
+      },
+      "every": {
+        "node_type": "BinExpr",
+        "loc": [
+          52,
+          24
+        ],
+        "operator": "<<=",
+        "left": {
+          "node_type": "VarExpr",
+          "loc": [
+            52,
+            23
+          ],
+          "id": "h"
+        },
+        "right": {
+          "node_type": "NumExpr",
+          "loc": [
+            52,
+            27
+          ],
+          "val": 1,
+          "val_type": "i32"
+        }
+      },
+      "body": {
+        "node_type": "Block",
+        "loc": [
+          52,
+          30
+        ],
+        "list": [
+          {
+            "node_type": "VarDecl",
+            "loc": [
+              53,
+              5
+            ],
+            "lst": [
+              {
+                "name": "wn",
+                "type": "i32",
+                "init": {
+                  "node_type": "CallExpr",
+                  "loc": [
+                    53,
+                    18
+                  ],
+                  "func_name": "qpow",
+                  "args": [
+                    {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        53,
+                        19
+                      ],
+                      "id": "G"
+                    },
+                    {
+                      "node_type": "BinExpr",
+                      "loc": [
+                        53,
+                        27
+                      ],
+                      "operator": "/",
+                      "left": {
+                        "node_type": "ParenExpr",
+                        "loc": [
+                          53,
+                          22
+                        ],
+                        "val": {
+                          "node_type": "BinExpr",
+                          "loc": [
+                            53,
+                            24
+                          ],
+                          "operator": "-",
+                          "left": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              53,
+                              23
+                            ],
+                            "id": "M"
+                          },
+                          "right": {
+                            "node_type": "NumExpr",
+                            "loc": [
+                              53,
+                              25
+                            ],
+                            "val": 1,
+                            "val_type": "i32"
+                          }
+                        }
+                      },
+                      "right": {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          53,
+                          28
+                        ],
+                        "id": "h"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "node_type": "IfStmt",
+            "loc": [
+              54,
+              5
+            ],
+            "cond": {
+              "node_type": "UnaryExpr",
+              "loc": [
+                54,
+                9
+              ],
+              "operator": '!',
+              "operand": {
+                "node_type": "UnaryExpr",
+                "loc": [
+                  54,
+                  10
+                ],
+                "operator": '~',
+                "operand": {
+                  "node_type": "VarExpr",
+                  "loc": [
+                    54,
+                    11
+                  ],
+                  "id": "d"
+                }
+              }
+            },
+            "then": {
+              "node_type": "Block",
+              "loc": [
+                54,
+                14
+              ],
+              "list": [
+                {
+                  "node_type": "BinExpr",
+                  "loc": [
+                    54,
+                    17
+                  ],
+                  "operator": "=",
+                  "left": {
+                    "node_type": "VarExpr",
+                    "loc": [
+                      54,
+                      14
+                    ],
+                    "id": "wn"
+                  },
+                  "right": {
+                    "node_type": "CallExpr",
+                    "loc": [
+                      54,
+                      23
+                    ],
+                    "func_name": "qpow",
+                    "args": [
+                      {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          54,
+                          24
+                        ],
+                        "id": "wn"
+                      },
+                      {
+                        "node_type": "BinExpr",
+                        "loc": [
+                          54,
+                          29
+                        ],
+                        "operator": "-",
+                        "left": {
+                          "node_type": "VarExpr",
+                          "loc": [
+                            54,
+                            28
+                          ],
+                          "id": "M"
+                        },
+                        "right": {
+                          "node_type": "NumExpr",
+                          "loc": [
+                            54,
+                            30
+                          ],
+                          "val": 2,
+                          "val_type": "i32"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "else": null
+          },
+          {
+            "node_type": "ForStmt",
+            "loc": [
+              55,
+              5
+            ],
+            "start": {
+              "node_type": "VarDecl",
+              "loc": [
+                55,
+                10
+              ],
+              "lst": [
+                {
+                  "name": "j",
+                  "type": "i32",
+                  "init": {
+                    "node_type": "NumExpr",
+                    "loc": [
+                      55,
+                      16
+                    ],
+                    "val": 0,
+                    "val_type": "i32"
+                  }
+                }
+              ]
+            },
+            "cond": {
+              "node_type": "BinExpr",
+              "loc": [
+                55,
+                20
+              ],
+              "operator": "<",
+              "left": {
+                "node_type": "VarExpr",
+                "loc": [
+                  55,
+                  19
+                ],
+                "id": "j"
+              },
+              "right": {
+                "node_type": "VarExpr",
+                "loc": [
+                  55,
+                  21
+                ],
+                "id": "n"
+              }
+            },
+            "every": {
+              "node_type": "BinExpr",
+              "loc": [
+                55,
+                25
+              ],
+              "operator": "+=",
+              "left": {
+                "node_type": "VarExpr",
+                "loc": [
+                  55,
+                  24
+                ],
+                "id": "j"
+              },
+              "right": {
+                "node_type": "VarExpr",
+                "loc": [
+                  55,
+                  27
+                ],
+                "id": "h"
+              }
+            },
+            "body": {
+              "node_type": "Block",
+              "loc": [
+                55,
+                30
+              ],
+              "list": [
+                {
+                  "node_type": "VarDecl",
+                  "loc": [
+                    56,
+                    7
+                  ],
+                  "lst": [
+                    {
+                      "name": "w",
+                      "type": "i32",
+                      "init": {
+                        "node_type": "NumExpr",
+                        "loc": [
+                          56,
+                          15
+                        ],
+                        "val": 1,
+                        "val_type": "i32"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "node_type": "ForStmt",
+                  "loc": [
+                    57,
+                    7
+                  ],
+                  "start": {
+                    "node_type": "VarDecl",
+                    "loc": [
+                      57,
+                      12
+                    ],
+                    "lst": [
+                      {
+                        "name": "k",
+                        "type": "i32",
+                        "init": {
+                          "node_type": "VarExpr",
+                          "loc": [
+                            57,
+                            18
+                          ],
+                          "id": "j"
+                        }
+                      }
+                    ]
+                  },
+                  "cond": {
+                    "node_type": "BinExpr",
+                    "loc": [
+                      57,
+                      22
+                    ],
+                    "operator": "<",
+                    "left": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        57,
+                        21
+                      ],
+                      "id": "k"
+                    },
+                    "right": {
+                      "node_type": "BinExpr",
+                      "loc": [
+                        57,
+                        24
+                      ],
+                      "operator": "+",
+                      "left": {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          57,
+                          23
+                        ],
+                        "id": "j"
+                      },
+                      "right": {
+                        "node_type": "ParenExpr",
+                        "loc": [
+                          57,
+                          25
+                        ],
+                        "val": {
+                          "node_type": "BinExpr",
+                          "loc": [
+                            57,
+                            27
+                          ],
+                          "operator": ">>",
+                          "left": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              57,
+                              26
+                            ],
+                            "id": "h"
+                          },
+                          "right": {
+                            "node_type": "NumExpr",
+                            "loc": [
+                              57,
+                              29
+                            ],
+                            "val": 1,
+                            "val_type": "i32"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "every": {
+                    "node_type": "SelfBackIncrementExpr",
+                    "loc": [
+                      57,
+                      34
+                    ],
+                    "left": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        57,
+                        33
+                      ],
+                      "id": "k"
+                    }
+                  },
+                  "body": {
+                    "node_type": "Block",
+                    "loc": [
+                      57,
+                      38
+                    ],
+                    "list": [
+                      {
+                        "node_type": "SelfBackIncrementExpr",
+                        "loc": [
+                          58,
+                          12
+                        ],
+                        "left": {
+                          "node_type": "VarExpr",
+                          "loc": [
+                            58,
+                            9
+                          ],
+                          "id": "cnt"
+                        }
+                      },
+                      {
+                        "node_type": "IfStmt",
+                        "loc": [
+                          59,
+                          9
+                        ],
+                        "cond": {
+                          "node_type": "BinExpr",
+                          "loc": [
+                            59,
+                            17
+                          ],
+                          "operator": "==",
+                          "left": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              59,
+                              13
+                            ],
+                            "id": "cnt"
+                          },
+                          "right": {
+                            "node_type": "NumExpr",
+                            "loc": [
+                              59,
+                              20
+                            ],
+                            "val": 1000,
+                            "val_type": "i32"
+                          }
+                        },
+                        "then": {
+                          "node_type": "Block",
+                          "loc": [
+                            59,
+                            26
+                          ],
+                          "list": [
+                            {
+                              "node_type": "CallExpr",
+                              "loc": [
+                                60,
+                                18
+                              ],
+                              "func_name": "eprintf",
+                              "args": [
+                                {
+                                  "node_type": "StringExpr",
+                                  "loc": [
+                                    60,
+                                    19
+                                  ],
+                                  "val": "h = %d, j = %d, k = %d\n"
+                                },
+                                {
+                                  "node_type": "VarExpr",
+                                  "loc": [
+                                    60,
+                                    47
+                                  ],
+                                  "id": "h"
+                                },
+                                {
+                                  "node_type": "VarExpr",
+                                  "loc": [
+                                    60,
+                                    50
+                                  ],
+                                  "id": "j"
+                                },
+                                {
+                                  "node_type": "VarExpr",
+                                  "loc": [
+                                    60,
+                                    53
+                                  ],
+                                  "id": "k"
+                                }
+                              ]
+                            },
+                            {
+                              "node_type": "BinExpr",
+                              "loc": [
+                                61,
+                                15
+                              ],
+                              "operator": "=",
+                              "left": {
+                                "node_type": "VarExpr",
+                                "loc": [
+                                  61,
+                                  11
+                                ],
+                                "id": "cnt"
+                              },
+                              "right": {
+                                "node_type": "NumExpr",
+                                "loc": [
+                                  61,
+                                  17
+                                ],
+                                "val": 0,
+                                "val_type": "i32"
+                              }
+                            }
+                          ]
+                        },
+                        "else": null
+                      },
+                      {
+                        "node_type": "VarDecl",
+                        "loc": [
+                          63,
+                          9
+                        ],
+                        "lst": [
+                          {
+                            "name": "x",
+                            "type": "i32",
+                            "init": {
+                              "node_type": "SubScriptExpr",
+                              "loc": [
+                                63,
+                                18
+                              ],
+                              "arr": {
+                                "node_type": "VarExpr",
+                                "loc": [
+                                  63,
+                                  17
+                                ],
+                                "id": "a"
+                              },
+                              "index": {
+                                "node_type": "VarExpr",
+                                "loc": [
+                                  63,
+                                  19
+                                ],
+                                "id": "k"
+                              }
+                            }
+                          },
+                          {
+                            "name": "y",
+                            "type": "i32",
+                            "init": {
+                              "node_type": "BinExpr",
+                              "loc": [
+                                63,
+                                44
+                              ],
+                              "operator": "%",
+                              "left": {
+                                "node_type": "BinExpr",
+                                "loc": [
+                                  63,
+                                  32
+                                ],
+                                "operator": "*",
+                                "left": {
+                                  "node_type": "BinExpr",
+                                  "loc": [
+                                    63,
+                                    30
+                                  ],
+                                  "operator": "*",
+                                  "left": {
+                                    "node_type": "NumExpr",
+                                    "loc": [
+                                      63,
+                                      27
+                                    ],
+                                    "val": 1,
+                                    "val_type": "i64"
+                                  },
+                                  "right": {
+                                    "node_type": "VarExpr",
+                                    "loc": [
+                                      63,
+                                      31
+                                    ],
+                                    "id": "w"
+                                  }
+                                },
+                                "right": {
+                                  "node_type": "SubScriptExpr",
+                                  "loc": [
+                                    63,
+                                    34
+                                  ],
+                                  "arr": {
+                                    "node_type": "VarExpr",
+                                    "loc": [
+                                      63,
+                                      33
+                                    ],
+                                    "id": "a"
+                                  },
+                                  "index": {
+                                    "node_type": "BinExpr",
+                                    "loc": [
+                                      63,
+                                      36
+                                    ],
+                                    "operator": "+",
+                                    "left": {
+                                      "node_type": "VarExpr",
+                                      "loc": [
+                                        63,
+                                        35
+                                      ],
+                                      "id": "k"
+                                    },
+                                    "right": {
+                                      "node_type": "ParenExpr",
+                                      "loc": [
+                                        63,
+                                        37
+                                      ],
+                                      "val": {
+                                        "node_type": "BinExpr",
+                                        "loc": [
+                                          63,
+                                          39
+                                        ],
+                                        "operator": ">>",
+                                        "left": {
+                                          "node_type": "VarExpr",
+                                          "loc": [
+                                            63,
+                                            38
+                                          ],
+                                          "id": "h"
+                                        },
+                                        "right": {
+                                          "node_type": "NumExpr",
+                                          "loc": [
+                                            63,
+                                            41
+                                          ],
+                                          "val": 1,
+                                          "val_type": "i32"
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "right": {
+                                "node_type": "VarExpr",
+                                "loc": [
+                                  63,
+                                  45
+                                ],
+                                "id": "M"
+                              }
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "node_type": "BinExpr",
+                        "loc": [
+                          64,
+                          14
+                        ],
+                        "operator": "=",
+                        "left": {
+                          "node_type": "SubScriptExpr",
+                          "loc": [
+                            64,
+                            10
+                          ],
+                          "arr": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              64,
+                              9
+                            ],
+                            "id": "a"
+                          },
+                          "index": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              64,
+                              11
+                            ],
+                            "id": "k"
+                          }
+                        },
+                        "right": {
+                          "node_type": "CallExpr",
+                          "loc": [
+                            64,
+                            18
+                          ],
+                          "func_name": "st",
+                          "args": [
+                            {
+                              "node_type": "BinExpr",
+                              "loc": [
+                                64,
+                                21
+                              ],
+                              "operator": "+",
+                              "left": {
+                                "node_type": "VarExpr",
+                                "loc": [
+                                  64,
+                                  19
+                                ],
+                                "id": "x"
+                              },
+                              "right": {
+                                "node_type": "VarExpr",
+                                "loc": [
+                                  64,
+                                  23
+                                ],
+                                "id": "y"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "node_type": "BinExpr",
+                        "loc": [
+                          64,
+                          39
+                        ],
+                        "operator": "=",
+                        "left": {
+                          "node_type": "SubScriptExpr",
+                          "loc": [
+                            64,
+                            28
+                          ],
+                          "arr": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              64,
+                              27
+                            ],
+                            "id": "a"
+                          },
+                          "index": {
+                            "node_type": "BinExpr",
+                            "loc": [
+                              64,
+                              30
+                            ],
+                            "operator": "+",
+                            "left": {
+                              "node_type": "VarExpr",
+                              "loc": [
+                                64,
+                                29
+                              ],
+                              "id": "k"
+                            },
+                            "right": {
+                              "node_type": "ParenExpr",
+                              "loc": [
+                                64,
+                                31
+                              ],
+                              "val": {
+                                "node_type": "BinExpr",
+                                "loc": [
+                                  64,
+                                  33
+                                ],
+                                "operator": ">>",
+                                "left": {
+                                  "node_type": "VarExpr",
+                                  "loc": [
+                                    64,
+                                    32
+                                  ],
+                                  "id": "h"
+                                },
+                                "right": {
+                                  "node_type": "NumExpr",
+                                  "loc": [
+                                    64,
+                                    35
+                                  ],
+                                  "val": 1,
+                                  "val_type": "i32"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "right": {
+                          "node_type": "CallExpr",
+                          "loc": [
+                            64,
+                            43
+                          ],
+                          "func_name": "st",
+                          "args": [
+                            {
+                              "node_type": "BinExpr",
+                              "loc": [
+                                64,
+                                50
+                              ],
+                              "operator": "-",
+                              "left": {
+                                "node_type": "BinExpr",
+                                "loc": [
+                                  64,
+                                  46
+                                ],
+                                "operator": "+",
+                                "left": {
+                                  "node_type": "VarExpr",
+                                  "loc": [
+                                    64,
+                                    44
+                                  ],
+                                  "id": "x"
+                                },
+                                "right": {
+                                  "node_type": "VarExpr",
+                                  "loc": [
+                                    64,
+                                    48
+                                  ],
+                                  "id": "M"
+                                }
+                              },
+                              "right": {
+                                "node_type": "VarExpr",
+                                "loc": [
+                                  64,
+                                  52
+                                ],
+                                "id": "y"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "node_type": "BinExpr",
+                        "loc": [
+                          65,
+                          10
+                        ],
+                        "operator": "=",
+                        "left": {
+                          "node_type": "VarExpr",
+                          "loc": [
+                            65,
+                            9
+                          ],
+                          "id": "w"
+                        },
+                        "right": {
+                          "node_type": "BinExpr",
+                          "loc": [
+                            65,
+                            19
+                          ],
+                          "operator": "%",
+                          "left": {
+                            "node_type": "BinExpr",
+                            "loc": [
+                              65,
+                              16
+                            ],
+                            "operator": "*",
+                            "left": {
+                              "node_type": "BinExpr",
+                              "loc": [
+                                65,
+                                14
+                              ],
+                              "operator": "*",
+                              "left": {
+                                "node_type": "NumExpr",
+                                "loc": [
+                                  65,
+                                  11
+                                ],
+                                "val": 1,
+                                "val_type": "i64"
+                              },
+                              "right": {
+                                "node_type": "VarExpr",
+                                "loc": [
+                                  65,
+                                  15
+                                ],
+                                "id": "w"
+                              }
+                            },
+                            "right": {
+                              "node_type": "VarExpr",
+                              "loc": [
+                                65,
+                                17
+                              ],
+                              "id": "wn"
+                            }
+                          },
+                          "right": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              65,
+                              20
+                            ],
+                            "id": "M"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "node_type": "IfStmt",
+      "loc": [
+        69,
+        3
+      ],
+      "cond": {
+        "node_type": "UnaryExpr",
+        "loc": [
+          69,
+          7
+        ],
+        "operator": '!',
+        "operand": {
+          "node_type": "UnaryExpr",
+          "loc": [
+            69,
+            8
+          ],
+          "operator": '~',
+          "operand": {
+            "node_type": "VarExpr",
+            "loc": [
+              69,
+              9
+            ],
+            "id": "d"
+          }
+        }
+      },
+      "then": {
+        "node_type": "Block",
+        "loc": [
+          69,
+          12
+        ],
+        "list": [
+          {
+            "node_type": "ForStmt",
+            "loc": [
+              69,
+              12
+            ],
+            "start": {
+              "node_type": "VarDecl",
+              "loc": [
+                69,
+                17
+              ],
+              "lst": [
+                {
+                  "name": "i",
+                  "type": "i32",
+                  "init": {
+                    "node_type": "NumExpr",
+                    "loc": [
+                      69,
+                      23
+                    ],
+                    "val": 0,
+                    "val_type": "i32"
+                  }
+                },
+                {
+                  "name": "j",
+                  "type": "i32",
+                  "init": {
+                    "node_type": "CallExpr",
+                    "loc": [
+                      69,
+                      32
+                    ],
+                    "func_name": "qpow",
+                    "args": [
+                      {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          69,
+                          33
+                        ],
+                        "id": "n"
+                      },
+                      {
+                        "node_type": "BinExpr",
+                        "loc": [
+                          69,
+                          36
+                        ],
+                        "operator": "-",
+                        "left": {
+                          "node_type": "VarExpr",
+                          "loc": [
+                            69,
+                            35
+                          ],
+                          "id": "M"
+                        },
+                        "right": {
+                          "node_type": "NumExpr",
+                          "loc": [
+                            69,
+                            37
+                          ],
+                          "val": 2,
+                          "val_type": "i32"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            "cond": {
+              "node_type": "BinExpr",
+              "loc": [
+                69,
+                42
+              ],
+              "operator": "<",
+              "left": {
+                "node_type": "VarExpr",
+                "loc": [
+                  69,
+                  41
+                ],
+                "id": "i"
+              },
+              "right": {
+                "node_type": "VarExpr",
+                "loc": [
+                  69,
+                  43
+                ],
+                "id": "n"
+              }
+            },
+            "every": {
+              "node_type": "SelfBackIncrementExpr",
+              "loc": [
+                69,
+                47
+              ],
+              "left": {
+                "node_type": "VarExpr",
+                "loc": [
+                  69,
+                  46
+                ],
+                "id": "i"
+              }
+            },
+            "body": {
+              "node_type": "Block",
+              "loc": [
+                69,
+                51
+              ],
+              "list": [
+                {
+                  "node_type": "BinExpr",
+                  "loc": [
+                    69,
+                    55
+                  ],
+                  "operator": "=",
+                  "left": {
+                    "node_type": "SubScriptExpr",
+                    "loc": [
+                      69,
+                      52
+                    ],
+                    "arr": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        69,
+                        51
+                      ],
+                      "id": "a"
+                    },
+                    "index": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        69,
+                        53
+                      ],
+                      "id": "i"
+                    }
+                  },
+                  "right": {
+                    "node_type": "BinExpr",
+                    "loc": [
+                      69,
+                      66
+                    ],
+                    "operator": "%",
+                    "left": {
+                      "node_type": "BinExpr",
+                      "loc": [
+                        69,
+                        64
+                      ],
+                      "operator": "*",
+                      "left": {
+                        "node_type": "BinExpr",
+                        "loc": [
+                          69,
+                          59
+                        ],
+                        "operator": "*",
+                        "left": {
+                          "node_type": "NumExpr",
+                          "loc": [
+                            69,
+                            56
+                          ],
+                          "val": 1,
+                          "val_type": "i64"
+                        },
+                        "right": {
+                          "node_type": "SubScriptExpr",
+                          "loc": [
+                            69,
+                            61
+                          ],
+                          "arr": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              69,
+                              60
+                            ],
+                            "id": "a"
+                          },
+                          "index": {
+                            "node_type": "VarExpr",
+                            "loc": [
+                              69,
+                              62
+                            ],
+                            "id": "i"
+                          }
+                        }
+                      },
+                      "right": {
+                        "node_type": "VarExpr",
+                        "loc": [
+                          69,
+                          65
+                        ],
+                        "id": "j"
+                      }
+                    },
+                    "right": {
+                      "node_type": "VarExpr",
+                      "loc": [
+                        69,
+                        67
+                      ],
+                      "id": "M"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "else": null
+    }
+  ]
+}

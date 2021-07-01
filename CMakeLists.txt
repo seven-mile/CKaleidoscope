@@ -23,12 +23,19 @@ message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
-add_executable(CKaleidoscope main.cpp)
+add_executable(CKaleidoscope main.cpp binary.cpp)
 add_executable(Sample test/sample.cpp)
 
-llvm_map_components_to_libnames(llvm_libs interpreter mcjit
-  support core irreader orcjit executionengine native
-  analysis instcombine object runtimedyld scalaropts)
+#llvm_map_components_to_libnames(llvm_libs interpreter mcjit
+#  support core irreader orcjit executionengine native
+#  analysis instcombine object runtimedyld scalaropts
+#  all-targets)
+execute_process(COMMAND llvm-config-12 --libs all
+                OUTPUT_VARIABLE llvm_libs)
+
+string(STRIP ${llvm_libs} llvm_libs)
+
+message(STATUS "Use llvm_libs: ${llvm_libs}")
 
 target_link_libraries(CKaleidoscope ${llvm_libs})
 target_link_libraries(Sample ${llvm_libs})

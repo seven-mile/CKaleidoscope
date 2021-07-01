@@ -19,16 +19,11 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/IR/LegacyPassManager.h>
 
-namespace llvm::orc {
-  struct KaleidoscopeJIT;
-}
-
 namespace zMile {
 
 inline llvm::LLVMContext g_context;
 inline llvm::IRBuilder<> g_builder(g_context);
 inline std::unique_ptr<llvm::Module> g_module;
-inline std::unique_ptr<llvm::orc::KaleidoscopeJIT> g_jit;
 inline std::map<std::string, std::stack<llvm::Value*>> g_named_values;
 inline std::unique_ptr<llvm::legacy::FunctionPassManager> g_fpm;
 inline std::map<std::string, std::unique_ptr<class ProtoNode>> g_protos;

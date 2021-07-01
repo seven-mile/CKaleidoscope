@@ -31,18 +31,24 @@ to [create an issue](https://github.com/seven-mile/CKaleidoscope/issues/new).
 - [x] Array type -> Compound array & pointer (even reference) type parsing
 - [x] Implement a segment tree
 - [x] Comma operator
+- [x] Source Location
 - [ ] `sizeof`,`alignof` operator
 - [ ] Ternary operator
 - [ ] Function (pointer) type
 - [ ] DWARF support ☆ Source-level debug
-- [ ] Compile into executable file
+- [x] Compile into executable file
 - [ ] Label and `goto` [low prior]
 - [ ] Structure / class
-- [ ] **New bug detected: segfault when data is too large**
 
 ---
 
 - [ ] Maybe: a VSCode extension for the toy language... (highlighting, language-server)
+
+## Known Issues
+
+- [ ] **segfault when data is too large (nothing to do with JIT)**
+- [ ] for llvm-12, JIT will crash when looking up symbol `main`
+- [ ] (Dev) CMake Debug lost Path information, which leads to linking error
 
 ## Examples
 
