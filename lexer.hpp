@@ -221,7 +221,7 @@ public:
       } else if (tmp_str == "const") {
         curx = tok_kw_const;
       }
-        else if (tmp_str == "void") {
+      else if (tmp_str == "void") {
         curx = tok_kw_void;
       } else if (tmp_str == "int") {
         curx = tok_kw_int;
@@ -240,22 +240,22 @@ public:
       } else if (tmp_str == "bool") {
         curx = tok_kw_bool;
       }
-        else if (tmp_str == "true") {
+      else if (tmp_str == "true") {
         curx = tok_kw_true;
       } else if (tmp_str == "false") {
         curx = tok_kw_false;
       }
-        else if (tmp_str == "if") {
+      else if (tmp_str == "if") {
         curx = tok_kw_if;
       } else if (tmp_str == "else") {
         curx = tok_kw_else;
       }
-        else if (tmp_str == "for") {
+      else if (tmp_str == "for") {
         curx = tok_kw_for;
       } else if (tmp_str == "while") {
         curx = tok_kw_while;
       }
-        else if (tmp_str == "return") {
+      else if (tmp_str == "return") {
         curx = tok_kw_return;
       } else if (tmp_str == "break") {
         curx = tok_kw_break;
