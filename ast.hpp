@@ -86,11 +86,11 @@ inline std::string get_raw_string(const std::string& str) {
 }
 
 inline llvm::ConstantInt* get_const_int_value(int64_t v, int b = 32, bool is_signed = true) {
-  return llvm::ConstantInt::get(g_context, llvm::APInt(b, v, is_signed));
+  return llvm::ConstantInt::get(*g_context, llvm::APInt(b, v, is_signed));
 }
 
 inline llvm::Constant* get_const_double_value(double v) {
-  return llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), v);
+  return llvm::ConstantFP::get(llvm::Type::getDoubleTy(*g_context), v);
 }
 
 inline llvm::Constant* get_default_value(llvm::Type* t, SourceLoc loc) {
@@ -217,7 +217,7 @@ inline llvm::AllocaInst* create_alloca_in_entry(
 class NullStmt : public StmtNode {
 public:
   NullStmt(SourceLoc loc) : StmtNode(loc) { this->loc = loc; }
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"NullStmt\", \"loc\": [" << loc.line << ',' << loc.column << "] }";
   }
@@ -233,10 +233,10 @@ public:
   NumExprNode(std::any val, SourceLoc loc) : val(val), ExprNode(loc) {  }
   virtual llvm::Type* get_type() const override {
     if (val.type() == typeid(int) || val.type() == typeid(uint))
-      return ty::getInt32Ty(g_context);
+      return ty::getInt32Ty(*g_context);
     else if (val.type() == typeid(int64_t) || val.type() == typeid(uint64_t))
-      return ty::getInt64Ty(g_context);
-    else if (val.type() == typeid(double)) return ty::getDoubleTy(g_context);
+      return ty::getInt64Ty(*g_context);
+    else if (val.type() == typeid(double)) return ty::getDoubleTy(*g_context);
     else return log_err("invalid val type.");
   }
   virtual void output(std::ostream & os = std::cerr) override {
@@ -267,7 +267,7 @@ class CharExprNode : public ExprNode {
 
 public:
   CharExprNode(char val, SourceLoc loc) : val(val), ExprNode(loc) {  }
-  virtual llvm::Type* get_type() const override { return ty::getInt8Ty(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getInt8Ty(*g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"CharExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": \"" << val << "\" }";
   }
@@ -283,13 +283,13 @@ class StringExprNode : public ExprNode {
 
 public:
   StringExprNode(const std::string& val, SourceLoc loc) : val(val), ExprNode(loc) {  }
-  virtual llvm::Type* get_type() const override { return llvm::ArrayType::get(ty::getInt8Ty(g_context), val.size()); }
+  virtual llvm::Type* get_type() const override { return llvm::ArrayType::get(ty::getInt8Ty(*g_context), val.size()); }
   virtual void output(std::ostream & os = std::cerr) override {
     // we need to display raw string
     os << "{ \"node_type\": \"StringExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": \"" << get_raw_string(val) << "\" }";
   }
   virtual llvm::Value* codegen() override {
-    return g_builder.CreateGlobalStringPtr(val);
+    return g_builder->CreateGlobalStringPtr(val);
   }
   virtual std::string get_value() const { return val; }
 };
@@ -299,7 +299,7 @@ class BoolExprNode : public ExprNode {
 
 public:
   BoolExprNode(bool val, SourceLoc loc) : val(val), ExprNode(loc) {  }
-  virtual llvm::Type* get_type() const override { return ty::getInt1Ty(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getInt1Ty(*g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"BoolExpr\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": " << (val ? "true" : "false") << " }";
   }
@@ -380,9 +380,9 @@ public:
     if (!ptr) return nullptr;
     if (get_type()->isArrayTy())
       // gives the first element pointer
-      return g_builder.CreateGEP(ptr, {get_const_int_value(0), get_const_int_value(0)});
+      return g_builder->CreateGEP(ptr, {get_const_int_value(0), get_const_int_value(0)});
     // gives the first element value
-    else return g_builder.CreateLoad(ptr, id);
+    else return g_builder->CreateLoad(ptr, id);
   }
 
   virtual llvm::Value* codegen_left() override {
@@ -434,7 +434,7 @@ public:
     auto v = codegen_left();
     // if it is the last dimension, return the exact value
     if (!v->getType()->getPointerElementType()->isArrayTy())
-      v = g_builder.CreateLoad(v);
+      v = g_builder->CreateLoad(v);
     // otherwise, return the current pointer!
     return v;
   }
@@ -443,7 +443,7 @@ public:
     if (!pos) return nullptr;
     
     if (pos->getType()->isDoubleTy())
-      pos = g_builder.CreateFPToUI(pos, llvm::Type::getInt32Ty(g_context));
+      pos = g_builder->CreateFPToUI(pos, llvm::Type::getInt32Ty(*g_context));
     
     // For lvalue array/struct, we must get its pointer Value*.
     // That's because some non-pointer type such as
@@ -454,13 +454,13 @@ public:
       // prvalue
       if (!arr->get_type()->isPointerTy())
         throw syntax_error("arr of prvalue must be a pointer.");
-      return g_builder.CreateGEP(arr->codegen(), pos);
+      return g_builder->CreateGEP(arr->codegen(), pos);
     }
 
     auto ptr = dynamic_cast<ILeftValue*>(arr.get())->codegen_left();
     if (!ptr) return nullptr;
 
-    return g_builder.CreateGEP(ptr, {
+    return g_builder->CreateGEP(ptr, {
       get_const_int_value(0), // dereference
       pos
     });
@@ -501,7 +501,7 @@ class VarDeclNode : public DeclNode {
 
 public:
   VarDeclNode(list_t& lst, bool is_const = false, SourceLoc loc = {0,0}) : lst(std::move(lst)), is_const(is_const), DeclNode(loc) {  }
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"VarDecl\", \"loc\": [" << loc.line << ',' << loc.column << "], \"lst\": ";
     output_list<ele_t>(lst, [](auto& x, auto& os) {
@@ -559,21 +559,21 @@ public:
             auto p1 = get_type_prec(I->getType(), loc), p2 = get_type_prec(v.type, loc);
             if (p1 > p2) {
               if (p1 == 0x3f3f3f3fu) return log_err("the initial value type is not capable for the variable.");
-              else I = g_builder.CreateTrunc(I, v.type);
+              else I = g_builder->CreateTrunc(I, v.type);
             }
             if (I->getType()->isIntegerTy() && v.type->isDoubleTy())
-              I = g_builder.CreateSIToFP(I, v.type);
+              I = g_builder->CreateSIToFP(I, v.type);
           }
 
-          auto A = g_builder.CreateAlloca(v.type, nullptr, v.name);
-          if (I) g_builder.CreateStore(I, A);
+          auto A = g_builder->CreateAlloca(v.type, nullptr, v.name);
+          if (I) g_builder->CreateStore(I, A);
           // maintain the symbol table
           g_named_values[v.name].push(A);
         }
 
       }
     }
-    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(*g_context));
   }
 
   list_t& get_list() { return lst; }
@@ -595,7 +595,7 @@ public:
   
   virtual llvm::Type* get_type() const override {
     if (op == ">" || op == "<" || op == "||" || op == "&&" || op == "<=" || op == ">=")
-      return ty::getInt1Ty(g_context);
+      return ty::getInt1Ty(*g_context);
     return get_max_type();
   }
 
@@ -619,14 +619,14 @@ public:
       if (!L || !R) return nullptr;
 
       if (left->get_type()->isDoubleTy() && right->get_type()->isIntegerTy())
-        R = g_builder.CreateSIToFP(R, left->get_type());
+        R = g_builder->CreateSIToFP(R, left->get_type());
 
       if (p1 < p2) {
         if (p2 == 0x3f3f3f3fu) return log_err("invalid assignment!");
-        else R = g_builder.CreateTrunc(R, left->get_type());
+        else R = g_builder->CreateTrunc(R, left->get_type());
       }
 
-      g_builder.CreateStore(R, L);
+      g_builder->CreateStore(R, L);
       // the value of assignment is rhs
       return R;
     }
@@ -643,85 +643,85 @@ public:
     if (res_ty->isDoubleTy()) {
 
       if (L->getType()->isIntegerTy())
-        L = g_builder.CreateSIToFP(L, res_ty);
+        L = g_builder->CreateSIToFP(L, res_ty);
       if (R->getType()->isIntegerTy())
-        R = g_builder.CreateSIToFP(R, res_ty);
-      if (op == "+") return g_builder.CreateFAdd(L, R, "add");
-      else if (op == "-") return g_builder.CreateFSub(L, R, "sub");
-      else if (op == "*") return g_builder.CreateFMul(L, R, "mul");
-      else if (op == "/") return g_builder.CreateFDiv(L, R, "div");
-      else if (op == "%") return g_builder.CreateFRem(L, R, "mod");
-      else if (op == "<") return g_builder.CreateFCmpULT(L, R, "lt");
-      else if (op == ">") return g_builder.CreateFCmpUGT(L, R, "gt");
-      else if (op == "<=") return g_builder.CreateFCmpULE(L, R, "le");
-      else if (op == ">=") return g_builder.CreateFCmpUGE(L, R, "ge");
-      else if (op == "==") return g_builder.CreateFCmpUEQ(L, R, "ueq");
-      else if (op == "!=") return g_builder.CreateFCmpUNE(L, R, "une");
-      else if (op == "+=") g_builder.CreateStore(R = g_builder.CreateFAdd(L, R, "add"),
+        R = g_builder->CreateSIToFP(R, res_ty);
+      if (op == "+") return g_builder->CreateFAdd(L, R, "add");
+      else if (op == "-") return g_builder->CreateFSub(L, R, "sub");
+      else if (op == "*") return g_builder->CreateFMul(L, R, "mul");
+      else if (op == "/") return g_builder->CreateFDiv(L, R, "div");
+      else if (op == "%") return g_builder->CreateFRem(L, R, "mod");
+      else if (op == "<") return g_builder->CreateFCmpULT(L, R, "lt");
+      else if (op == ">") return g_builder->CreateFCmpUGT(L, R, "gt");
+      else if (op == "<=") return g_builder->CreateFCmpULE(L, R, "le");
+      else if (op == ">=") return g_builder->CreateFCmpUGE(L, R, "ge");
+      else if (op == "==") return g_builder->CreateFCmpUEQ(L, R, "ueq");
+      else if (op == "!=") return g_builder->CreateFCmpUNE(L, R, "une");
+      else if (op == "+=") g_builder->CreateStore(R = g_builder->CreateFAdd(L, R, "add"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "-=") g_builder.CreateStore(R = g_builder.CreateFSub(L, R, "sub"),
+      else if (op == "-=") g_builder->CreateStore(R = g_builder->CreateFSub(L, R, "sub"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "*=") g_builder.CreateStore(R = g_builder.CreateFMul(L, R, "mul"),
+      else if (op == "*=") g_builder->CreateStore(R = g_builder->CreateFMul(L, R, "mul"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "/=") g_builder.CreateStore(R = g_builder.CreateFDiv(L, R, "div"),
+      else if (op == "/=") g_builder->CreateStore(R = g_builder->CreateFDiv(L, R, "div"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "%=") g_builder.CreateStore(R = g_builder.CreateFRem(L, R, "mod"),
+      else if (op == "%=") g_builder->CreateStore(R = g_builder->CreateFRem(L, R, "mod"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
 
       if (op[1] == '=') return R;
     } else if (res_ty->isIntegerTy()) {
 
-      L = g_builder.CreateIntCast(L, res_ty, true);
-      R = g_builder.CreateIntCast(R, res_ty, true);
+      L = g_builder->CreateIntCast(L, res_ty, true);
+      R = g_builder->CreateIntCast(R, res_ty, true);
 
-      if (op == "+") return g_builder.CreateAdd(L, R, "add");
-      else if (op == "-") return g_builder.CreateSub(L, R, "sub");
-      else if (op == "*") return g_builder.CreateMul(L, R, "mul");
-      else if (op == "/") return g_builder.CreateSDiv(L, R, "div");
-      else if (op == "%") return g_builder.CreateSRem(L, R, "mod");
-      else if (op == "<") return g_builder.CreateICmpSLT(L, R, "lt");
-      else if (op == ">") return g_builder.CreateICmpSGT(L, R, "gt");
-      else if (op == "<=") return g_builder.CreateICmpSLE(L, R, "le");
-      else if (op == ">=") return g_builder.CreateICmpSGE(L, R, "ge");
-      else if (op == "==") return g_builder.CreateICmpEQ(L, R, "eq");
-      else if (op == "!=") return g_builder.CreateICmpNE(L, R, "ne");
-      else if (op == "&") return g_builder.CreateAnd(L, R, "and");
-      else if (op == "|") return g_builder.CreateOr (L, R, "or");
-      else if (op == "^") return g_builder.CreateXor(L, R, "xor");
-      else if (op == "&&") return g_builder.CreateAnd(
-          g_builder.CreateICmpNE(L, get_const_int_value(0, L->getType()->getIntegerBitWidth())),
-          g_builder.CreateICmpNE(R, get_const_int_value(0, L->getType()->getIntegerBitWidth())),
+      if (op == "+") return g_builder->CreateAdd(L, R, "add");
+      else if (op == "-") return g_builder->CreateSub(L, R, "sub");
+      else if (op == "*") return g_builder->CreateMul(L, R, "mul");
+      else if (op == "/") return g_builder->CreateSDiv(L, R, "div");
+      else if (op == "%") return g_builder->CreateSRem(L, R, "mod");
+      else if (op == "<") return g_builder->CreateICmpSLT(L, R, "lt");
+      else if (op == ">") return g_builder->CreateICmpSGT(L, R, "gt");
+      else if (op == "<=") return g_builder->CreateICmpSLE(L, R, "le");
+      else if (op == ">=") return g_builder->CreateICmpSGE(L, R, "ge");
+      else if (op == "==") return g_builder->CreateICmpEQ(L, R, "eq");
+      else if (op == "!=") return g_builder->CreateICmpNE(L, R, "ne");
+      else if (op == "&") return g_builder->CreateAnd(L, R, "and");
+      else if (op == "|") return g_builder->CreateOr (L, R, "or");
+      else if (op == "^") return g_builder->CreateXor(L, R, "xor");
+      else if (op == "&&") return g_builder->CreateAnd(
+          g_builder->CreateICmpNE(L, get_const_int_value(0, L->getType()->getIntegerBitWidth())),
+          g_builder->CreateICmpNE(R, get_const_int_value(0, L->getType()->getIntegerBitWidth())),
           "and"
         );
-      else if (op == "||") return g_builder.CreateOr(
-          g_builder.CreateICmpNE(L, get_const_int_value(0, R->getType()->getIntegerBitWidth())),
-          g_builder.CreateICmpNE(R, get_const_int_value(0, R->getType()->getIntegerBitWidth())),
+      else if (op == "||") return g_builder->CreateOr(
+          g_builder->CreateICmpNE(L, get_const_int_value(0, R->getType()->getIntegerBitWidth())),
+          g_builder->CreateICmpNE(R, get_const_int_value(0, R->getType()->getIntegerBitWidth())),
           "or"
         );
-      else if (op == "<<") return g_builder.CreateShl(L, R, "shl");
-      else if (op == ">>") return g_builder.CreateLShr(L, R, "shr");
+      else if (op == "<<") return g_builder->CreateShl(L, R, "shl");
+      else if (op == ">>") return g_builder->CreateLShr(L, R, "shr");
 
-      else if (op == "+=") g_builder.CreateStore(R = g_builder.CreateAdd(L, R, "add"),
+      else if (op == "+=") g_builder->CreateStore(R = g_builder->CreateAdd(L, R, "add"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "-=") g_builder.CreateStore(R = g_builder.CreateSub(L, R, "sub"),
+      else if (op == "-=") g_builder->CreateStore(R = g_builder->CreateSub(L, R, "sub"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "*=") g_builder.CreateStore(R = g_builder.CreateMul(L, R, "mul"),
+      else if (op == "*=") g_builder->CreateStore(R = g_builder->CreateMul(L, R, "mul"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "/=") g_builder.CreateStore(R = g_builder.CreateSDiv(L, R, "div"),
+      else if (op == "/=") g_builder->CreateStore(R = g_builder->CreateSDiv(L, R, "div"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "%=") g_builder.CreateStore(R = g_builder.CreateSRem(L, R, "mod"),
-                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-
-      else if (op == "&=") g_builder.CreateStore(R = g_builder.CreateAnd(L, R, "and"),
-                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "|=") g_builder.CreateStore(R = g_builder.CreateOr (L, R, "or"),
-                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == "^=") g_builder.CreateStore(R = g_builder.CreateXor(L, R, "xor"),
+      else if (op == "%=") g_builder->CreateStore(R = g_builder->CreateSRem(L, R, "mod"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
 
-      else if (op == "<<=") g_builder.CreateStore(R = g_builder.CreateShl(L, R, "shl"),
+      else if (op == "&=") g_builder->CreateStore(R = g_builder->CreateAnd(L, R, "and"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
-      else if (op == ">>=") g_builder.CreateStore(R = g_builder.CreateLShr(L, R, "shr"),
+      else if (op == "|=") g_builder->CreateStore(R = g_builder->CreateOr (L, R, "or"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == "^=") g_builder->CreateStore(R = g_builder->CreateXor(L, R, "xor"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+
+      else if (op == "<<=") g_builder->CreateStore(R = g_builder->CreateShl(L, R, "shl"),
+                                    dynamic_cast<ILeftValue*>(left.get())->codegen_left());
+      else if (op == ">>=") g_builder->CreateStore(R = g_builder->CreateLShr(L, R, "shr"),
                                     dynamic_cast<ILeftValue*>(left.get())->codegen_left());
 
       if (op == "<<=" || op == ">>=" || op[1] == '=')
@@ -782,18 +782,18 @@ public:
         auto p1 = get_type_prec(V->getType(), loc), p2 = get_type_prec(it->getType(), loc);
         if (p1 > p2) {
           if (p1 == 0x3f3f3f3fu) return log_err("the param value type is not capable for the argument.");
-          else V = g_builder.CreateTrunc(V, it->getType());
+          else V = g_builder->CreateTrunc(V, it->getType());
         }
         if (V->getType()->isIntegerTy() && it->getType()->isDoubleTy())
-          V = g_builder.CreateSIToFP(V, it->getType());
+          V = g_builder->CreateSIToFP(V, it->getType());
         it++;
       }
       lv_args.push_back(V);
     }
 
     return l_func->getReturnType()->isVoidTy() ? 
-            g_builder.CreateCall(l_func, lv_args) :
-            g_builder.CreateCall(l_func, lv_args, "call");
+            g_builder->CreateCall(l_func, lv_args) :
+            g_builder->CreateCall(l_func, lv_args, "call");
   }
 
   virtual std::string get_name() const override {
@@ -806,7 +806,7 @@ class RetStmtNode : public StmtNode {
 public:
   RetStmtNode(expr_t val, SourceLoc loc) : val(std::move(val)), StmtNode(loc) {  }
 
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
 
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"RetStmt\", \"loc\": [" << loc.line << ',' << loc.column << "], \"val\": ";
@@ -818,19 +818,19 @@ public:
     auto V = val->codegen();
     if (!V) return nullptr;
 
-    auto ret_ty = g_builder.getCurrentFunctionReturnType();
+    auto ret_ty = g_builder->getCurrentFunctionReturnType();
     if (ret_ty->isVoidTy())
-      return g_builder.CreateRetVoid();
+      return g_builder->CreateRetVoid();
     auto p1 = get_type_prec(val->get_type(), loc), p2 = get_type_prec(ret_ty, loc);
     if (p1 > p2) {
       if (p1 == 0x3f3f3f3fu) return log_err("return value type is not capable for the function.");
-      else V = g_builder.CreateTrunc(V, ret_ty);
+      else V = g_builder->CreateTrunc(V, ret_ty);
     }
     if (ret_ty->isDoubleTy() && val->get_type()->isIntegerTy())
-      V = g_builder.CreateSIToFP(V, ret_ty);
+      V = g_builder->CreateSIToFP(V, ret_ty);
 
-    g_builder.CreateStore(V, g_named_values["__return_value"].top());
-    return g_builder.CreateBr(g_bl_ret);
+    g_builder->CreateStore(V, g_named_values["__return_value"].top());
+    return g_builder->CreateBr(g_bl_ret);
   }
 };
 
@@ -840,7 +840,7 @@ class BlockNode : public StmtNode {
 public:
   BlockNode(list_t v, SourceLoc loc) : v(std::move(v)), StmtNode(loc) {  }
   virtual ~BlockNode() = default;
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"Block\", \"loc\": [" << loc.line << ',' << loc.column << "], \"list\": ";
     output_list<stmt_t>(v, [](auto& x, auto& os){ x->output(os); }, os);
@@ -849,7 +849,7 @@ public:
   virtual llvm::Value* codegen() override {
     g_bl_now.push(this);
 
-    llvm::Value* res = llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+    llvm::Value* res = llvm::UndefValue::get(llvm::Type::getVoidTy(*g_context));
 
     for (auto &x:v) {
       res = x->codegen();
@@ -878,7 +878,7 @@ public:
   IfStmtNode(expr_t cond, block_t then, block_t els, SourceLoc loc)
     : cond(std::move(cond)), then(std::move(then)), els(std::move(els)), StmtNode(loc) {  }
 
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
 
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"IfStmt\", \"loc\": [" << loc.line << ',' << loc.column << "], \"cond\": ";
@@ -893,46 +893,46 @@ public:
 
   virtual llvm::Value* codegen() override {
     auto vl_cond = cond->codegen();
-    if (vl_cond->getType() != llvm::Type::getInt1Ty(g_context) || vl_cond->getType()->getIntegerBitWidth() != 1)
+    if (vl_cond->getType() != llvm::Type::getInt1Ty(*g_context) || vl_cond->getType()->getIntegerBitWidth() != 1)
     {
       if (vl_cond->getType()->isIntegerTy())
-        vl_cond = g_builder.CreateICmpNE(
+        vl_cond = g_builder->CreateICmpNE(
           vl_cond,
           llvm::ConstantInt::get(vl_cond->getType(), 0),
           "ifcond");
       else if (vl_cond->getType()->isDoubleTy())
-        vl_cond = g_builder.CreateFCmpONE(
+        vl_cond = g_builder->CreateFCmpONE(
           vl_cond,
-          llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
+          llvm::ConstantFP::get(llvm::Type::getDoubleTy(*g_context), 0),
           "ifcond");
       else return log_err("unsupported condition expression type.");
     }
     
     // func is the current block's parent, not absolutely really a function.
-    auto func = g_builder.GetInsertBlock()->getParent();
+    auto func = g_builder->GetInsertBlock()->getParent();
     
     // bl_then is binded with func, so you needn't use func.gBBL().pb() for it
-    auto bl_then = llvm::BasicBlock::Create(g_context, "then", func),
-         bl_else = llvm::BasicBlock::Create(g_context, "else"),
-         bl_merg = llvm::BasicBlock::Create(g_context, "afterif");
+    auto bl_then = llvm::BasicBlock::Create(*g_context, "then", func),
+         bl_else = llvm::BasicBlock::Create(*g_context, "else"),
+         bl_merg = llvm::BasicBlock::Create(*g_context, "afterif");
     
-    g_builder.CreateCondBr(vl_cond, bl_then, bl_else);
+    g_builder->CreateCondBr(vl_cond, bl_then, bl_else);
     // pour the newly created instructions into bl_then
-    g_builder.SetInsertPoint(bl_then);
+    g_builder->SetInsertPoint(bl_then);
     
     // create instructions
     auto vl_then = then->codegen();
     if (!vl_then) return nullptr;
 
     // skip else, br to merg
-    if (g_builder.GetInsertBlock()->getInstList().empty()
-      || !g_builder.GetInsertBlock()->getInstList().back().isTerminator())
-      g_builder.CreateBr(bl_merg);
-    bl_then = g_builder.GetInsertBlock();
+    if (g_builder->GetInsertBlock()->getInstList().empty()
+      || !g_builder->GetInsertBlock()->getInstList().back().isTerminator())
+      g_builder->CreateBr(bl_merg);
+    bl_then = g_builder->GetInsertBlock();
 
     // insert the else block
     func->getBasicBlockList().push_back(bl_else);
-    g_builder.SetInsertPoint(bl_else);
+    g_builder->SetInsertPoint(bl_else);
 
     if (els) {
       llvm::Value* vl_else = els->codegen();
@@ -940,19 +940,19 @@ public:
     }
 
     // Also
-    if (g_builder.GetInsertBlock()->getInstList().empty()
-      || !g_builder.GetInsertBlock()->getInstList().back().isTerminator())
-      g_builder.CreateBr(bl_merg);
+    if (g_builder->GetInsertBlock()->getInstList().empty()
+      || !g_builder->GetInsertBlock()->getInstList().back().isTerminator())
+      g_builder->CreateBr(bl_merg);
 
     if (bl_else->getInstList().empty()
       || !bl_else->getInstList().back().isTerminator())
-      g_builder.SetInsertPoint(bl_else),
-      g_builder.CreateBr(bl_merg);
+      g_builder->SetInsertPoint(bl_else),
+      g_builder->CreateBr(bl_merg);
 
     func->getBasicBlockList().push_back(bl_merg);
-    g_builder.SetInsertPoint(bl_merg);
+    g_builder->SetInsertPoint(bl_merg);
 
-    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(*g_context));
   }
 };
 
@@ -965,7 +965,7 @@ public:
     start(std::move(start)), every(std::move(every)),
     cond(std::move(cond)), body(std::move(body)), StmtNode(loc) {  }
   
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
 
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"ForStmt\", \"loc\": [" << loc.line << ',' << loc.column << "], \"start\": ";
@@ -980,54 +980,54 @@ public:
   }
 
   virtual llvm::Value* codegen() override {
-    auto func = g_builder.GetInsertBlock()->getParent();
+    auto func = g_builder->GetInsertBlock()->getParent();
 
     auto vl_start = start->codegen();
     if (!vl_start) return nullptr;
     
-    auto bl_loop  = llvm::BasicBlock::Create(g_context, "loop", func),
-         bl_body  = llvm::BasicBlock::Create(g_context, "body", func),
-         bl_lend  = llvm::BasicBlock::Create(g_context, "lend", func),
-         bl_after = llvm::BasicBlock::Create(g_context, "after", func);
+    auto bl_loop  = llvm::BasicBlock::Create(*g_context, "loop", func),
+         bl_body  = llvm::BasicBlock::Create(*g_context, "body", func),
+         bl_lend  = llvm::BasicBlock::Create(*g_context, "lend", func),
+         bl_after = llvm::BasicBlock::Create(*g_context, "after", func);
     
     g_named_values["__loop_break"].push(bl_after);
     g_named_values["__loop_continue"].push(bl_lend);
 
-    g_builder.CreateBr(bl_loop);
-    g_builder.SetInsertPoint(bl_loop);
+    g_builder->CreateBr(bl_loop);
+    g_builder->SetInsertPoint(bl_loop);
 
     // re-eval cond every loop
     auto vl_cond = cond->codegen();
     if (!vl_cond->getType()->isIntegerTy(1)) {
       if (vl_cond->getType()->isIntegerTy())
-        vl_cond = g_builder.CreateICmpNE(
+        vl_cond = g_builder->CreateICmpNE(
           vl_cond,
           llvm::ConstantInt::get(vl_cond->getType(), 0),
           "loopcond");
       else if (vl_cond->getType()->isDoubleTy())
-        vl_cond = g_builder.CreateFCmpUNE(
+        vl_cond = g_builder->CreateFCmpUNE(
           vl_cond,
-          llvm::ConstantFP::get(llvm::Type::getDoubleTy(g_context), 0),
+          llvm::ConstantFP::get(llvm::Type::getDoubleTy(*g_context), 0),
           "loopcond");
       else return log_err("unsupported condition expression type.");
     }
 
-    g_builder.CreateCondBr(vl_cond, bl_body, bl_after);
+    g_builder->CreateCondBr(vl_cond, bl_body, bl_after);
 
-    g_builder.SetInsertPoint(bl_body);
+    g_builder->SetInsertPoint(bl_body);
 
     auto vl_body = body->codegen();
     if (!vl_body) return nullptr;
 
-    g_builder.CreateBr(bl_lend);
-    g_builder.SetInsertPoint(bl_lend);
+    g_builder->CreateBr(bl_lend);
+    g_builder->SetInsertPoint(bl_lend);
 
     auto vl_every = every->codegen();
     if (!vl_every) return nullptr;
 
-    g_builder.CreateBr(bl_loop);
+    g_builder->CreateBr(bl_loop);
 
-    g_builder.SetInsertPoint(bl_after);
+    g_builder->SetInsertPoint(bl_after);
     
     if (instof<VarDeclNode>(*start)) {
       auto& lst = ((VarDeclNode*)start.get())->get_list();
@@ -1037,7 +1037,7 @@ public:
     g_named_values["__loop_break"].pop();
     g_named_values["__loop_continue"].pop();
 
-    return llvm::UndefValue::get(llvm::Type::getVoidTy(g_context));
+    return llvm::UndefValue::get(llvm::Type::getVoidTy(*g_context));
   }
 };
 
@@ -1052,7 +1052,7 @@ public:
   ProtoNode(std::string id, tag_tok type, std::vector<Argu> args, bool var_args, SourceLoc loc)
     : id(id), type(type), args(std::move(args)), var_args(var_args), Node(loc) {  }
   
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
 
   // { Prototype, "id": "cos", "type": "number", "args": ["number theta"] }
   virtual void output(std::ostream & os = std::cerr) override {
@@ -1097,7 +1097,7 @@ public:
   FuncNode(proto_t proto, block_t body, SourceLoc loc)
     : proto(std::move(proto)), body(std::move(body)), name(this->proto->get_name()), LeftExprNode(loc) {  }
 
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
 
   // { Function, { Prototype, $...$ }, { Body, "..." } }
   virtual void output(std::ostream & os = std::cerr) override {
@@ -1120,8 +1120,8 @@ public:
     if (!fun->empty())
       return log_err("function cannot be redefined.");
 
-    auto bas_blo = llvm::BasicBlock::Create(g_context, "entry", fun);
-    g_builder.SetInsertPoint(bas_blo);
+    auto bas_blo = llvm::BasicBlock::Create(*g_context, "entry", fun);
+    g_builder->SetInsertPoint(bas_blo);
 
     std::vector<std::string> extra_pop;
 
@@ -1129,14 +1129,14 @@ public:
       extra_pop.push_back(arg.getName().str());
       auto alloca = create_alloca_in_entry(
           fun, Var { arg.getName().str(), arg.getType() });
-      g_builder.CreateStore(&arg, alloca);
+      g_builder->CreateStore(&arg, alloca);
       g_named_values[arg.getName().str()].push(alloca);
     }
     auto ret_ty = fun->getReturnType();
     llvm::AllocaInst* var_ret;
     if (!ret_ty->isVoidTy())
     {
-      g_bl_ret = llvm::BasicBlock::Create(g_context, "__return_block");
+      g_bl_ret = llvm::BasicBlock::Create(*g_context, "__return_block");
       var_ret = 
         create_alloca_in_entry(
           fun,   Var {
@@ -1152,14 +1152,14 @@ public:
       for (auto &x:extra_pop) g_named_values[x].pop();
 
       if (ret_ty->isVoidTy())
-        g_builder.CreateRetVoid();
+        g_builder->CreateRetVoid();
       else {
         auto& ls = fun->getBasicBlockList().back().getInstList();
         bool term = ls.empty() | !ls.back().isTerminator();
         fun->getBasicBlockList().push_back(g_bl_ret);
-        if (term) g_builder.CreateBr(g_bl_ret);
-        g_builder.SetInsertPoint(g_bl_ret);
-        g_builder.CreateRet(g_builder.CreateLoad(var_ret));
+        if (term) g_builder->CreateBr(g_bl_ret);
+        g_builder->SetInsertPoint(g_bl_ret);
+        g_builder->CreateRet(g_builder->CreateLoad(var_ret));
       }
 
       llvm::verifyFunction(*fun);
@@ -1213,7 +1213,7 @@ public:
         else return log_err("invalid disaddress expression operand type!");
       }
       if (op == "&") return t->getPointerTo();
-      if (op == "!") return ty::getInt8Ty(g_context);
+      if (op == "!") return ty::getInt8Ty(*g_context);
       if (op == "~") return t;
       return log_err("unknown unary operator.");
     } else return log_err("invalid unary expression operand type!");
@@ -1228,15 +1228,15 @@ public:
 
   virtual llvm::Value* codegen() override {
     auto t = operand->get_type();
-    if (op == "*") return g_builder.CreateLoad(operand->codegen());
+    if (op == "*") return g_builder->CreateLoad(operand->codegen());
     else if (op == "&") return dynamic_cast<ILeftValue*>(operand.get())->codegen_left();
     else if (op == "!") {
-      if (t->isIntegerTy()) return g_builder.CreateICmpEQ(operand->codegen(), llvm::ConstantInt::get(t, 0));
-      else if (t->isDoubleTy()) return g_builder.CreateFCmpOEQ(operand->codegen(), llvm::ConstantFP::get(t, 0));
+      if (t->isIntegerTy()) return g_builder->CreateICmpEQ(operand->codegen(), llvm::ConstantInt::get(t, 0));
+      else if (t->isDoubleTy()) return g_builder->CreateFCmpOEQ(operand->codegen(), llvm::ConstantFP::get(t, 0));
       else return log_err("invalid logical not expression operand type!");
     } else if (op == "~") {
       if (!t->isIntegerTy()) return log_err("only integer can get bitwise not.");
-        return g_builder.CreateNot(operand->codegen());
+        return g_builder->CreateNot(operand->codegen());
     } else return log_err("unknown unary operator.");
   }
   virtual llvm::Value* codegen_left() override {
@@ -1262,9 +1262,9 @@ public:
     if (!left->is_left())
       return log_err("invalid expression for addadd, expected a left value.");
     auto P = left->codegen();
-    auto Q = g_builder.CreateAdd(P, llvm::ConstantInt::get(g_context, llvm::APInt(32, is_add ? 1 : -1)), "heymine");
+    auto Q = g_builder->CreateAdd(P, llvm::ConstantInt::get(*g_context, llvm::APInt(32, is_add ? 1 : -1)), "heymine");
     auto L = dynamic_cast<ILeftValue*>(left.get())->codegen_left();
-    g_builder.CreateStore(Q, L);
+    g_builder->CreateStore(Q, L);
 
     return Q;
   }
@@ -1291,9 +1291,9 @@ public:
   }
   virtual llvm::Value* codegen() override {
     auto P = left->codegen();
-    auto Q = g_builder.CreateAdd(P, llvm::ConstantInt::get(g_context, llvm::APInt(32, is_add ? 1 : -1)));
+    auto Q = g_builder->CreateAdd(P, llvm::ConstantInt::get(*g_context, llvm::APInt(32, is_add ? 1 : -1)));
     auto L = dynamic_cast<ILeftValue*>(left.get())->codegen_left();
-    g_builder.CreateStore(Q, L);
+    g_builder->CreateStore(Q, L);
 
     return P;
   }
@@ -1305,7 +1305,7 @@ public:
   
   LoopJumpStmtNode(bool is_break, SourceLoc loc) : is_break(is_break), StmtNode(loc) {  }
 
-  virtual llvm::Type* get_type() const override { return ty::getVoidTy(g_context); }
+  virtual llvm::Type* get_type() const override { return ty::getVoidTy(*g_context); }
   virtual void output(std::ostream & os = std::cerr) override {
     os << "{ \"node_type\": \"" << (is_break ? "BreakStmt" : "ContinueStmt") << "\", \"loc\": [" << loc.line << ',' << loc.column << "] }";
   }
@@ -1314,11 +1314,11 @@ public:
     if (is_break) {
       if (g_named_values["__loop_break"].empty())
         return log_err("break statement should be used in the loop!");
-      return g_builder.CreateBr(llvm::dyn_cast<llvm::BasicBlock>(g_named_values["__loop_break"].top()));
+      return g_builder->CreateBr(llvm::dyn_cast<llvm::BasicBlock>(g_named_values["__loop_break"].top()));
     } else {
       if (g_named_values["__loop_continue"].empty())
         return log_err("continue statement should be used in the loop!");
-      return g_builder.CreateBr(llvm::dyn_cast<llvm::BasicBlock>(g_named_values["__loop_continue"].top()));
+      return g_builder->CreateBr(llvm::dyn_cast<llvm::BasicBlock>(g_named_values["__loop_continue"].top()));
     }
   }
 };

@@ -71,7 +71,7 @@ int main(const int nargs, const char *cargs[])
 
       auto RT = zMile::g_jit->getMainJITDylib().createResourceTracker();
       auto TSM = llvm::orc::ThreadSafeModule(
-        std::move(zMile::g_module), std::unique_ptr<llvm::LLVMContext>(&zMile::g_context));
+        std::move(zMile::g_module), std::move(zMile::g_context));
 
       // add new module to submit the current module.
       zMile::g_exit_err(zMile::g_jit->addModule(std::move(TSM), RT));

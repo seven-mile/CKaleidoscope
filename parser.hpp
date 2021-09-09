@@ -665,7 +665,7 @@ public:
         if (cmd) {
           auto RT = zMile::g_jit->getMainJITDylib().createResourceTracker();
           auto TSM = llvm::orc::ThreadSafeModule(
-            std::move(zMile::g_module), std::unique_ptr<llvm::LLVMContext>(&zMile::g_context));
+            std::move(zMile::g_module), std::move(zMile::g_context));
           g_exit_err(g_jit->addModule(std::move(TSM), RT));
           init_module_and_pass_mgr();
         }

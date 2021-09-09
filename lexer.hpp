@@ -97,21 +97,21 @@ inline const bool tok_is_type(const tag_tok t) {
 inline llvm::Type* get_type_of_tok(const tag_tok t) {
   switch (t) {
     case tok_kw_number:
-      return llvm::Type::getDoubleTy(g_context);
+      return llvm::Type::getDoubleTy(*g_context);
     case tok_kw_string:
-      return llvm::Type::getInt8PtrTy(g_context);
+      return llvm::Type::getInt8PtrTy(*g_context);
     case tok_kw_char:
-      return llvm::Type::getInt8Ty(g_context);
+      return llvm::Type::getInt8Ty(*g_context);
     case tok_kw_bool:
-      return llvm::Type::getInt1Ty(g_context);
+      return llvm::Type::getInt1Ty(*g_context);
     case tok_kw_int:
     case tok_kw_uint:
-      return llvm::Type::getInt32Ty(g_context);
+      return llvm::Type::getInt32Ty(*g_context);
     case tok_kw_int64:
     case tok_kw_uint64:
-      return llvm::Type::getInt64Ty(g_context);
+      return llvm::Type::getInt64Ty(*g_context);
     case tok_kw_void:
-      return llvm::Type::getVoidTy(g_context);
+      return llvm::Type::getVoidTy(*g_context);
     default:
       return nullptr;
   }

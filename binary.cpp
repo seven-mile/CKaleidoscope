@@ -178,7 +178,7 @@ bool CreateBinary(llvm::Module *module, const std::string &filename,
 llvm::Module *CreateModule() {
   llvm::InitializeNativeTarget();
 
-  llvm::Module *module = new llvm::Module("TheModule", zMile::g_context);
+  llvm::Module *module = new llvm::Module("TheModule", *zMile::g_context);
 
   llvm::Triple triple(llvm::sys::getDefaultTargetTriple());
   if (model == Model::m32) {

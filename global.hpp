@@ -21,8 +21,8 @@
 
 namespace zMile {
 
-inline llvm::LLVMContext g_context;
-inline llvm::IRBuilder<> g_builder(g_context);
+inline std::unique_ptr<llvm::LLVMContext> g_context;
+inline std::unique_ptr<llvm::IRBuilder<>> g_builder;
 inline std::unique_ptr<llvm::Module> g_module;
 inline std::map<std::string, std::stack<llvm::Value*>> g_named_values;
 inline std::unique_ptr<llvm::legacy::FunctionPassManager> g_fpm;
