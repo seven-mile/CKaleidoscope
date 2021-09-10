@@ -334,8 +334,11 @@ public:
   VarExprNode(const std::string &id, SourceLoc loc) : id(id), LeftExprNode(loc) {  }
   virtual llvm::Type* get_type() const override {
     if (g_named_values.find(id) != g_named_values.end()
-        && g_named_values[id].size())
-      return g_named_values[id].top()->getType()->getPointerElementType();
+        && g_named_values[id].size()) {
+      if (is_const()) return get_const_value()->getType();
+      // AllocaInst::getType === [VarType]*
+      else return g_named_values[id].top()->getType()->getPointerElementType();
+    }
     return log_err("undefined variable (maybe haven't codegen it.)");
   }
   virtual void output(std::ostream & os = std::cerr) override {
@@ -361,19 +364,24 @@ public:
     throw object_invalid("undefined variable (maybe haven't codegen it.)");
   }
 
+  // please ensure constant
+  virtual llvm::Constant* get_const_value() const {
+    if (is_const()) {
+      if (is_global())
+        // global constant needs to return its initializer
+        return llvm::dyn_cast<llvm::GlobalVariable>(g_named_values[id].top())->getInitializer();
+      else
+        // local constant is a direct Constant*
+        return llvm::dyn_cast<llvm::Constant>(g_named_values[id].top());
+    }
+    return nullptr;
+  }
+
   virtual llvm::Value* codegen() override {
     // if it's a constant non-aggregate variable
-    if (is_const()) {
-      if (!get_type()->isArrayTy()) {
-        if (is_global())
-          // global constant needs to return its initializer
-          return llvm::dyn_cast<llvm::GlobalVariable>(g_named_values[id].top())->getInitializer();
-        else
-          // local constant is a direct Constant*
-          return g_named_values[id].top();
-      }
-    }
-
+    if (is_const() && !get_type()->isArrayTy())
+      return get_const_value();
+    
     // now the only left situation is AllocaInst*
     // gives the whole variable pointer, llvm type is [VarType]*
     auto ptr = g_named_values[id].top();
