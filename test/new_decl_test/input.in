@@ -1,6 +1,6 @@
 extern int printf(char *fmt, ...);
 
-const int N = 1e5+3;
+const int N = 603;
 
 int someorz = 0, p[N];
 bool vis[N];
@@ -13,11 +13,10 @@ def int func(int (*arg_ptr)[N]) {
 int (*ptr_to_arr)[N];
 
 def int main() {
-  const int MX = 1e5;
+  const int MX = N-3;
 
-  ptr_to_arr = 15*16+15;
+  ptr_to_arr = p;
 
-  // 0xFF
   func(ptr_to_arr);
 
   printf("test\n");

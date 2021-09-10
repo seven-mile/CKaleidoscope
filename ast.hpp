@@ -116,7 +116,9 @@ inline uint get_type_prec(ty* t, SourceLoc loc) {
   switch (t->getTypeID()) {
   case ty::DoubleTyID: return 0x3f3f3f3fu;
   case ty::IntegerTyID: return t->getIntegerBitWidth();
-  case ty::PointerTyID: return 32; // hey?
+  case ty::PointerTyID:
+  case ty::ArrayTyID:
+    return 32; // hey?
   default: return (log_err_with_loc<std::logic_error>("cannot determine the type precedence.", loc), 0);
   }
 }
@@ -386,9 +388,14 @@ public:
     // gives the whole variable pointer, llvm type is [VarType]*
     auto ptr = g_named_values[id].top();
     if (!ptr) return nullptr;
-    if (get_type()->isArrayTy())
-      // gives the first element pointer
-      return g_builder->CreateGEP(ptr, {get_const_int_value(0), get_const_int_value(0)});
+    if (get_type()->isArrayTy()) {
+      // deprecated: gives the first element pointer
+      // return g_builder->CreateGEP(ptr, {get_const_int_value(0), get_const_int_value(0)});
+      // now: return the whole variable pointer, such as [100 x i32][50 x i32]*
+      //      and when it's necessary, (for example, arithmetic operation)
+      //      the pointer is implicitly casted into first element pointer
+      return ptr;
+    }
     // gives the first element value
     else return g_builder->CreateLoad(ptr, id);
   }
@@ -444,6 +451,7 @@ public:
     if (!v->getType()->getPointerElementType()->isArrayTy())
       v = g_builder->CreateLoad(v);
     // otherwise, return the current pointer!
+    // future: return reference to array [ int (&)[N] ]
     return v;
   }
   virtual llvm::Value* codegen_left() override {

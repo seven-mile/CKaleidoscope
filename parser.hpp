@@ -418,10 +418,7 @@ public:
         auto arg_ty = get_type_of_tok(cur_tok.type);
         adv();
 
-        auto prm = parse_prim();
-        prm->output(std::cerr);
-        
-        auto name = this->parse_id_type(std::move(prm), arg_ty);
+        auto name = this->parse_id_type(std::move(parse_prim()), arg_ty);
         args.emplace_back(name, arg_ty);
         
         if (cur_tok.is_tool(")")) break;
