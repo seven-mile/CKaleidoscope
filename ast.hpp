@@ -790,21 +790,42 @@ public:
             return log_err("incorrect # arguments passed.");
 
     std::vector<llvm::Value*> lv_args;
-    auto it = l_func->arg_begin();
-    for (size_t i = 0, e = args.size(); i != e; i++) {
-      auto V = args[i]->codegen();
-      if (!V) return nullptr;
-      if (!l_func->isVarArg()) {
-        auto p1 = get_type_prec(V->getType(), loc), p2 = get_type_prec(it->getType(), loc);
-        if (p1 > p2) {
-          if (p1 == 0x3f3f3f3fu) return log_err("the param value type is not capable for the argument.");
-          else V = g_builder->CreateTrunc(V, it->getType());
+    { // construct lv_args
+      auto it = l_func->arg_begin();
+      for (size_t i = 0, e = args.size(); i != e; i++) {
+        auto V = args[i]->codegen();
+        if (!V) return nullptr;
+        
+        // check non-VaArg part of the prototype
+        if (i < l_func->arg_size()) {
+          { // extra front end type check
+            auto t1 = args[i]->get_type(), t2 = it->getType();
+            if ((t1->isArrayTy() || t1->isPointerTy()) && (t2->isArrayTy() || t2->isPointerTy())) {
+              llvm::Type *ele1_ty = nullptr, *ele2_ty = nullptr;
+              if (t1->isPointerTy()) ele1_ty = t1->getPointerElementType();
+              if (t1->isArrayTy()) ele1_ty = t1->getArrayElementType();
+              if (t2->isPointerTy()) ele2_ty = t2->getPointerElementType();
+              if (t2->isArrayTy()) ele2_ty = t2->getArrayElementType();
+              assert(ele1_ty && ele2_ty && "unexpected error: element type not found.");
+
+              if (ele1_ty != ele2_ty)
+                log_err_with_loc("invalid argument type, the pointer can't be casted implicitly.", args[i]->loc);
+            }
+          }
+
+          // simple implicit casting
+          auto p1 = get_type_prec(V->getType(), loc), p2 = get_type_prec(it->getType(), loc);
+          if (p1 > p2) {
+            if (p1 == 0x3f3f3f3fu) return log_err("the param value type is not capable for the argument.");
+            else V = g_builder->CreateTrunc(V, it->getType());
+          }
+          if (V->getType()->isIntegerTy() && it->getType()->isDoubleTy())
+            V = g_builder->CreateSIToFP(V, it->getType());
         }
-        if (V->getType()->isIntegerTy() && it->getType()->isDoubleTy())
-          V = g_builder->CreateSIToFP(V, it->getType());
+        
         it++;
+        lv_args.push_back(V);
       }
-      lv_args.push_back(V);
     }
 
     return l_func->getReturnType()->isVoidTy() ? 

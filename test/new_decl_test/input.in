@@ -2,7 +2,7 @@ extern int printf(char *fmt, ...);
 
 const int N = 603;
 
-int someorz = 0, p[N];
+int someorz = 0, p[N], C[N][N];
 bool vis[N];
 
 
@@ -18,8 +18,8 @@ def int main() {
   ptr_to_arr = p;
 
   func(ptr_to_arr);
-
-  printf("test\n");
+  func(&C[2]);
+  func(C[2]); // CE
   
   for (int i=2; i<=MX; i++) {
     if (!p[i]) p[++p[0]] = i;
