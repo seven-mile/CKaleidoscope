@@ -417,13 +417,13 @@ public:
           return log_err("unexpected token, expected a type name.");
         auto arg_ty = get_type_of_tok(cur_tok.type);
         adv();
-        for (; cur_tok.is_tool("*"); adv())
-          arg_ty = arg_ty->getPointerTo();
+
+        auto prm = parse_prim();
+        prm->output(std::cerr);
         
-        if (cur_tok.type != tok_id)
-          return log_err("unexpected token, expected an arg name.");
-        args.emplace_back(std::any_cast<const std::string&>(cur_tok.val), arg_ty);
-        adv();
+        auto name = this->parse_id_type(std::move(prm), arg_ty);
+        args.emplace_back(name, arg_ty);
+        
         if (cur_tok.is_tool(")")) break;
         if (!cur_tok.is_tool(","))
           return log_err("unexpected token, expected ',' or ')'.");

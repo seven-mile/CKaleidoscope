@@ -57,7 +57,7 @@ int main(const int nargs, const char *cargs[])
     bool broken;
     bool ret = llvm::verifyModule(*zMile::g_module, &llvm::dbgs(), &broken);
 
-    llvm::dbgs() << llvm::format("[Default TargetTriple = %s]\n", llvm::sys::getDefaultTargetTriple().c_str());
+    // llvm::dbgs() << llvm::format("[Default TargetTriple = %s]\n", llvm::sys::getDefaultTargetTriple().c_str());
     zMile::g_module->setTargetTriple(llvm::sys::getDefaultTargetTriple());
 
     if (nargs == 2) {

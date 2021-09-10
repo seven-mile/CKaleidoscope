@@ -1,14 +1,26 @@
-extern int printf(string fmt, ...);
+extern int printf(char *fmt, ...);
 
 const int N = 1e5+3;
 
 int someorz = 0, p[N];
 bool vis[N];
 
+
+def int func(int (*arg_ptr)[N]) {
+  return printf("ptr: %p\n", arg_ptr);
+}
+
 int (*ptr_to_arr)[N];
 
 def int main() {
   const int MX = 1e5;
+
+  ptr_to_arr = 15*16+15;
+
+  // 0xFF
+  func(ptr_to_arr);
+
+  printf("test\n");
   
   for (int i=2; i<=MX; i++) {
     if (!p[i]) p[++p[0]] = i;
@@ -18,6 +30,6 @@ def int main() {
     }
   }
 
-  printf("the 100th prime is %d", p[100]);
+  printf("the 100th prime is %d\n", p[100]);
   return 0;
 }
