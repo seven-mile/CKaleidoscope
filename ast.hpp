@@ -1,22 +1,23 @@
 #pragma once
 
+#include "errdef.hpp"
+#include "anyex.hpp"
+#include "global.hpp"
+#include "ioagent.hpp"
+#include "lexer.hpp"
+#include "optimizer.hpp"
+
 #include <algorithm>
-#include <any>
-#include <bits/stdint-intn.h>
-#include <bits/stdint-uintn.h>
 #include <cassert>
 #include <cstddef>
 #include <iostream>
-#include <llvm/Support/Casting.h>
 #include <string>
-
 #include <map>
 #include <memory>
-#include <ostream>
-#include <stdexcept>
 #include <vector>
 #include <functional>
 
+#include <llvm/Support/Casting.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/GlobalVariable.h>
@@ -37,12 +38,6 @@
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/raw_ostream.h>
 
-#include "anyex.hpp"
-#include "errdef.hpp"
-#include "global.hpp"
-#include "ioagent.hpp"
-#include "lexer.hpp"
-#include "optimizer.hpp"
 
 namespace zMile {
 

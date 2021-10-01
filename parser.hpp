@@ -8,6 +8,7 @@
 #include "jit.hpp"
 #include "lexer.hpp"
 #include "optimizer.hpp"
+
 #include <algorithm>
 #include <any>
 #include <cassert>

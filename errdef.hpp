@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <system_error>
+#include <iostream>
 
 #define DECLARE_GENERAL_ERROR(err_name, err_base) \
 class err_name : public err_base { \

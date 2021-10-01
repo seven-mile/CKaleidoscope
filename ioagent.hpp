@@ -1,5 +1,7 @@
 #pragma once
 
+#include "errdef.hpp"
+
 #include <iostream>
 #include <fstream>
 #include <vector>

@@ -1,5 +1,10 @@
 #pragma once
 
+#include "errdef.hpp"
+#include "anyex.hpp"
+#include "global.hpp"
+#include "ioagent.hpp"
+
 #include <cassert>
 #include <cctype>
 #include <cinttypes>
@@ -10,10 +15,6 @@
 #include <llvm/IR/Type.h>
 #include <string>
 
-#include "global.hpp"
-#include "ioagent.hpp"
-#include "errdef.hpp"
-#include "anyex.hpp"
 
 namespace zMile {
 
