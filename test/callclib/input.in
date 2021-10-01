@@ -1,5 +1,5 @@
 extern int printf(...);
-# from cmath
+// from cmath
 extern number tgamma(number x);
 extern number lgamma(number x);
 

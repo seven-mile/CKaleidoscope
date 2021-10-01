@@ -6,12 +6,8 @@
 #include <fstream>
 #include <vector>
 
-namespace zMile {
 
-struct SourceLoc {
-  int line, column;
-  SourceLoc(int line, int column) : line(line), column(column) {  }
-};
+namespace zMile {
 
 // ((C6H7O2)===(ONO2)3)n
 class FileSugar

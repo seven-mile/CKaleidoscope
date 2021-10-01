@@ -1,4 +1,4 @@
-# unusable for a while
+// unusable for a while
 
 extern number scanf(string fmt, ...);
 extern number printf(string fmt, ...);

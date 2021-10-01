@@ -21,4 +21,16 @@ DECLARE_LOGIC_ERROR(syntax_error)
 DECLARE_LOGIC_ERROR(object_invalid)
 DECLARE_GENERAL_ERROR(io_error, std::runtime_error)
 
+struct SourceLoc {
+  int line, column;
+  SourceLoc(int line, int column) : line(line), column(column) {  }
+};
+
+template <class err_t = syntax_error>
+inline auto log_err_with_loc(std::string errinfo, SourceLoc loc) {
+  std::cerr << errinfo + " [Line " + std::to_string(loc.line) + ", Column " + std::to_string(loc.column) + "]\n";
+  exit(1);
+  return nullptr;
+}
+
 }

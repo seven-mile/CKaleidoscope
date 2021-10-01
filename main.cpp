@@ -26,7 +26,6 @@
 
 int main(const int nargs, const char *cargs[])
 {
-  std::cout << "==============================\n";
   zMile::FileSugar* fs;
 
   // if (nargs > 2) return fprintf(
@@ -53,7 +52,7 @@ int main(const int nargs, const char *cargs[])
 
 
   if (nargs >= 2) {
-    zMile::g_module->print(llvm::dbgs(), nullptr);
+    // zMile::g_module->print(llvm::dbgs(), nullptr);
 
     bool broken;
     bool ret = llvm::verifyModule(*zMile::g_module, &llvm::dbgs(), &broken);
@@ -80,6 +79,7 @@ int main(const int nargs, const char *cargs[])
 
       if (auto expr_main = zMile::g_jit->lookup("main")) {
         if (auto ptr = expr_main->getAddress()) {
+          llvm::errs() << "Program started, output:\n\n";
           auto res = ((int(*)())ptr)();
           llvm::errs() << "\nProgram exited with return value " << res << "." << '\n';
         } else {
@@ -87,7 +87,7 @@ int main(const int nargs, const char *cargs[])
         }
       } else {
         llvm::logAllUnhandledErrors(expr_main.takeError(), llvm::errs(), "kaleido err: ");
-        exit(1);
+        return 1;
       }
     } else {
       // Compile the source code and output
@@ -97,6 +97,7 @@ int main(const int nargs, const char *cargs[])
 
       } else {
         llvm::errs() << llvm::format("Failed to compile the module into executable. [Output = %s]\n", cargs[3]);
+        return 1;
       }
 
     }

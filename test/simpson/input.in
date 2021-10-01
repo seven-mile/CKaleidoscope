@@ -32,7 +32,7 @@ def number asr3(number a,number b,number eps) {
   return asr4(a, b, eps, simpson(a, b));
 }
 
-# ln x = int_1^x 1/x dx
+// ln x = int_1^x 1/x dx
 def number my_log(number x) {
   printf("my_log\n");
   if (x <= 0) return 1.0/0;
@@ -40,7 +40,7 @@ def number my_log(number x) {
   return -asr3(x, 1, 0.00001);
 }
 
-def number main() {
+def int main() {
   number x = 15;
   printf("my_log(%g) = %g\n", x, my_log(15));
 

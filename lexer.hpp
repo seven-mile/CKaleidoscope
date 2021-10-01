@@ -191,6 +191,11 @@ public:
     }
   }
 
+  template<class err_t = syntax_error>
+  inline auto log_err(std::string errinfo) {
+    return log_err_with_loc<err_t>(errinfo, file.cur_loc);
+  }
+
   Token get_token()
   {
     if (cmd && submitted) return submitted = false, tok_invalid;
@@ -276,8 +281,8 @@ public:
       size_t cnt_ch[2] {};
       for (; ~file=='l' || ~file=='u'; !file)
         cnt_ch[~file=='l']++;
-      if (cnt_ch[0] > 1) throw syntax_error("unsigned literal suffix shouldn't appear more than one time.");
-      if (cnt_ch[1] > 2) throw syntax_error("long literal suffix shouldn't appear more than two times.");
+      if (cnt_ch[0] > 1) log_err("unsigned literal suffix shouldn't appear more than one time.");
+      if (cnt_ch[1] > 2) log_err("long literal suffix shouldn't appear more than two times.");
       
       upd();
 
@@ -288,14 +293,14 @@ public:
       for (char ch : tmp_str) {
         if (ch == '.') {
           if (++verify_dot > 1)
-            throw syntax_error("two many dots in float number.");
+            log_err("two many dots in float number.");
           if (verify_e)
-            throw syntax_error("non integer exponent is invalid.");
+            log_err("non integer exponent is invalid.");
         }
         if (ch == 'e') if (++verify_e   > 1)
-          throw syntax_error("two many exp in float number.");
+          log_err("two many exp in float number.");
         if (!isdigit(ch) && ch != '.' && ch != 'e' && ch != '-')
-          throw syntax_error("invalid literal float number.");
+          log_err("invalid literal float number.");
       }
       if (verify_dot || verify_e) return { tok_lit_num, std::strtod(tmp_str.c_str(), nullptr), loc_start };
       else {
@@ -317,7 +322,7 @@ public:
     if (~file == '\'') {
       SourceLoc loc_start = file.cur_loc;
       char vch = !file, lch = !file;
-      if (lch != '\'') throw syntax_error("no ending \' character.");
+      if (lch != '\'') log_err("no ending \' character.");
       !file;
       upd();
       return { tok_lit_char, vch, loc_start };
@@ -345,7 +350,7 @@ public:
       }
       upd();
       if (~file == '\"') { !file; return { tok_lit_string, tmp_str, loc_start }; }
-      throw syntax_error("no ending \" character.");
+      log_err("no ending \" character.");
     }
 
     if (~file == EOF) return { tok_eof, -1, file.cur_loc };

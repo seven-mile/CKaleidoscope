@@ -92,7 +92,7 @@ class Parser {
     if (auto ptr = dynamic_cast<UnaryExprNode*>(expr.get())) {
       auto & op = ptr->op;
       if (op == "*" || op == "&") ty = ty->getPointerTo();
-      else throw syntax_error("invalid type unary operator definition.");
+      else log_err("invalid type unary operator definition.");
       return parse_id_type(std::move(ptr->operand), ty);
     }
 
@@ -124,7 +124,7 @@ class Parser {
         idx = idxfp->getValueAPF().convertToDouble();
       } else if (auto idxint = llvm::dyn_cast<llvm::ConstantInt>(idxv)) {
         idx = idxint->getZExtValue();
-      } else throw object_invalid("unsupported array index type.");
+      } else log_err<object_invalid>("unsupported array index type.");
 
       if (!idx) return log_err("array index must be constant.");
 
@@ -136,7 +136,8 @@ class Parser {
       return parse_id_type(std::move(ptr->val), ty);
     }
 
-    throw syntax_error("invalid var id expr type!");
+    log_err("invalid var id expr type!");
+    return "";
   }
 
 public:
@@ -196,7 +197,7 @@ public:
       std::vector<node_t> args;
       auto ptrVarNode = dynamic_cast<VarExprNode*>(core.get());
       if (!ptrVarNode)
-        throw syntax_error("function reference calling not supported until now!");
+        log_err("function reference calling not supported until now!");
 
       if (cur_tok.is_tool(")"))
         return (adv(), std::make_unique<CallExprNode>(ptrVarNode->get_name(), std::move(args), loc_start));
@@ -580,7 +581,7 @@ public:
       std::pair<Var, expr_t> ele{{"", nullptr}, nullptr};
       if (auto ptr = dynamic_cast<BinExprNode*>(expr.get())) {
         if (ptr->op != "=")
-          throw syntax_error("invalid variable declaration syntax! expected '='.");
+          log_err("invalid variable declaration syntax! expected '='.");
         
         ele.second = std::move(ptr->right);
         expr = std::move(ptr->left);
@@ -642,7 +643,7 @@ public:
       }
       switch (cur_tok.type)
       {
-      case tok_eof: return void(std::cerr << "EOF read, exiting." << std::endl);
+      case tok_eof: return; //void(std::cerr << "EOF read, exiting." << std::endl);
       case tok_invalid: continue;
       case tok_kw_def:
       {
@@ -652,7 +653,7 @@ public:
         if (def->get_name() == "main") {
           // return value default zero
           if (def->get_proto()->get_return_type() != tok_kw_int)
-            throw syntax_error("the return type of the main function should be int32.");
+            log_err("the return type of the main function should be int32.");
 
           def->get_body()->get_list().push_back(
             std::make_unique<RetStmtNode>(std::make_unique<NumExprNode>(0, SourceLoc{-1,-1}), SourceLoc{-1,-1}));

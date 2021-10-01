@@ -41,12 +41,6 @@
 
 namespace zMile {
 
-template <class err_t = syntax_error>
-inline auto log_err_with_loc(std::string errinfo, SourceLoc loc) {
-  throw err_t(errinfo + " [Line " + std::to_string(loc.line) + ", Column " + std::to_string(loc.column) + "]");
-  return nullptr;
-}
-
 template <class T>
 inline void output_list(const std::vector<T>& v,
                         std::function<void(const T&, std::ostream&)> output,
@@ -464,7 +458,7 @@ public:
     if (!arr->is_left() || !arr->get_type()->isArrayTy()) {
       // prvalue
       if (!arr->get_type()->isPointerTy())
-        throw syntax_error("arr of prvalue must be a pointer.");
+        throw object_invalid("arr of prvalue must be a pointer.");
       return g_builder->CreateGEP(arr->codegen(), pos);
     }
 
@@ -543,7 +537,7 @@ public:
 
         if (g_named_values.find(v.name) != g_named_values.end()
             && !g_named_values[v.name].empty())
-          throw syntax_error("global variable name has been occupied.");
+          log_err("global variable name has been occupied.");
 
         if (is_const && !I)
           return log_err("constant global variable must have a constant initial value.");

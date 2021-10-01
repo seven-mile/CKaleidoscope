@@ -18,7 +18,7 @@ def int main() {
   ptr_to_arr = p;
 
   func(ptr_to_arr);
-  func(&C[2]);
+  func(C[2]); // CE
   
   for (int i=2; i<=MX; i++) {
     if (!p[i]) p[++p[0]] = i;
