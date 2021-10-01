@@ -19,7 +19,7 @@ def int main() {
 
   func(ptr_to_arr);
   func(&C[2]);
-  func(C[2]); // CE
+  // func(C[2]); // CE
   
   for (int i=2; i<=MX; i++) {
     if (!p[i]) p[++p[0]] = i;
