@@ -1,6 +1,8 @@
 .vscode/
+.idea/
 CMakeFiles/
 build/
+cmake-build-debug/
 
 *.exe
 *.o
