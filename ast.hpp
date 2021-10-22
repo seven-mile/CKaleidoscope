@@ -92,9 +92,6 @@ inline llvm::Constant* get_default_value(llvm::Type* t, SourceLoc loc) {
 
 inline llvm::Function* get_func(std::string name);
 
-inline llvm::AllocaInst* create_alloca_in_entry(
-    llvm::Function *func, const std::string var);
-
 
 // =========================
 // AST Node
@@ -555,25 +552,39 @@ public:
         // maintain the symbol table
         g_named_values[v.name].push(A);
       } else { // local
-        if (is_const) {
-          if (!I) return log_err("const variable must have a initial value.");
-          g_named_values[v.name].push(get_calcuate_const_value(I, v.type, loc));
-        } else {
+        auto decl_runtime_var = [&, vty = v.type, vnm = v.name]() -> void* {
           // for possible cast
           if (I) {
-            auto p1 = get_type_prec(I->getType(), loc), p2 = get_type_prec(v.type, loc);
+            auto p1 = get_type_prec(I->getType(), loc), p2 = get_type_prec(vty, loc);
             if (p1 > p2) {
               if (p1 == 0x3f3f3f3fu) return log_err("the initial value type is not capable for the variable.");
-              else I = g_builder->CreateTrunc(I, v.type);
+              else I = g_builder->CreateTrunc(I, vty);
             }
-            if (I->getType()->isIntegerTy() && v.type->isDoubleTy())
-              I = g_builder->CreateSIToFP(I, v.type);
+            if (I->getType()->isIntegerTy() && vty->isDoubleTy())
+              I = g_builder->CreateSIToFP(I, vty);
+            
           }
 
-          auto A = g_builder->CreateAlloca(v.type, nullptr, v.name);
+          auto A = g_builder->CreateAlloca(vty, nullptr, vnm);
           if (I) g_builder->CreateStore(I, A);
           // maintain the symbol table
-          g_named_values[v.name].push(A);
+          g_named_values[vnm].push(A);
+          return vty;
+        };
+
+        if (is_const) {
+          if (!I) return log_err("const variable must have a initial value.");
+          if (llvm::isa<llvm::Constant>(I)) {
+            // compile-time constant
+            g_named_values[v.name].push(get_calcuate_const_value(I, v.type, loc));
+          } else {
+            // runtime constant
+            if (!decl_runtime_var())
+              return nullptr;
+          }
+        } else {
+          if (!decl_runtime_var())
+            return nullptr;
         }
 
       }

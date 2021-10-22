@@ -28,6 +28,8 @@ def int main() {
     }
   }
 
-  printf("the 100th prime is %d\n", p[100]);
+  const int res = p[99];
+
+  printf("the 99th prime is %d\nthe 100th prime is %d\n", res, p[100]);
   return 0;
 }
