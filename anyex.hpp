@@ -8,7 +8,7 @@
 
 namespace zMile {
 
-inline void print_any(const std::any x)
+inline void print_any(const std::any &x)
 {
   if (x.type() == typeid(char))
     std::cout << std::any_cast<char>(x);

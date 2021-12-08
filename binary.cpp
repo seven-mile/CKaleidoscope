@@ -40,7 +40,7 @@ static llvm::codegen::RegisterCodeGenFlags CGF;
 static llvm::ToolOutputFile *GetOutputStream(const std::string &filename) {
   // Open the file.
   std::error_code error;
-  llvm::sys::fs::OpenFlags OpenFlags = llvm::sys::fs::F_None;
+  llvm::sys::fs::OpenFlags OpenFlags = llvm::sys::fs::OF_None;
   llvm::ToolOutputFile *FDOut =
       new llvm::ToolOutputFile(filename, error, OpenFlags);
   if (error) {
@@ -138,6 +138,8 @@ bool CreateBinary(llvm::Module *module, const std::string &filename,
     std::string compiler = "/usr/bin/clang";
 #elif defined(__GNUC__)
     std::string compiler = "/usr/bin/gcc";
+#elif defined(_MSC_VER)
+      std::string compiler = "gcc.exe";
 #endif
     if (model == Model::m32) {
       modelStr = "-m32";

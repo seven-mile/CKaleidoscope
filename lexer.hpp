@@ -142,7 +142,7 @@ struct Token {
   Token(const Token& rhs) = default;
   Token(Token&& rhs) = default;
   Token& operator=(Token &&rhs) = default;
-  ~Token() {  }
+  ~Token() = default;
 
   bool is_type() const {
     return tok_is_type(type);
@@ -306,7 +306,7 @@ public:
       else {
         if (cnt_ch[0]) {
           if (cnt_ch[1] == 2) return { tok_lit_num, (uint64_t)std::strtoull(tmp_str.c_str(), nullptr, 10), loc_start };
-          return { tok_lit_num, (uint)std::strtoul(tmp_str.c_str(), nullptr, 10), loc_start };
+          return { tok_lit_num, (uint32_t)std::strtoul(tmp_str.c_str(), nullptr, 10), loc_start };
         } else {
           if (cnt_ch[1] == 2) return { tok_lit_num, (int64_t)atoll(tmp_str.c_str()), loc_start };
           return { tok_lit_num, (int)std::strtol(tmp_str.c_str(), nullptr, 10), loc_start };

@@ -5,8 +5,8 @@
 #include "global.hpp"
 #include "ioagent.hpp"
 #include "lexer.hpp"
-#include "optimizer.hpp"
 
+#include <typeinfo>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -98,7 +98,7 @@ inline llvm::Function* get_func(std::string name);
 // =========================
 
 using ty = llvm::Type;
-inline uint get_type_prec(ty* t, SourceLoc loc) {
+inline uint32_t get_type_prec(ty* t, SourceLoc loc) {
   switch (t->getTypeID()) {
   case ty::DoubleTyID: return 0x3f3f3f3fu;
   case ty::IntegerTyID: return t->getIntegerBitWidth();
@@ -220,7 +220,7 @@ class NumExprNode : public ExprNode {
 public:
   NumExprNode(std::any val, SourceLoc loc) : val(val), ExprNode(loc) {  }
   virtual llvm::Type* get_type() const override {
-    if (val.type() == typeid(int) || val.type() == typeid(uint))
+    if (val.type() == typeid(int) || val.type() == typeid(uint32_t))
       return ty::getInt32Ty(*g_context);
     else if (val.type() == typeid(int64_t) || val.type() == typeid(uint64_t))
       return ty::getInt64Ty(*g_context);
@@ -238,7 +238,7 @@ public:
       return get_const_double_value(std::any_cast<double>(val));
     if (val.type() == typeid(int))
       return get_const_int_value(std::any_cast<int>(val), 32);
-    if (val.type() == typeid(uint))
+    if (val.type() == typeid(uint32_t))
       return get_const_int_value(std::any_cast<int>(val), 32, false);
     if (val.type() == typeid(int64_t))
       return get_const_int_value(std::any_cast<int64_t>(val), 64);
@@ -544,7 +544,7 @@ public:
 
         auto A = new llvm::GlobalVariable(*g_module, v.type, is_const,
               llvm::Function::InternalLinkage,
-              init_res ?: get_default_value(v.type, loc), v.name);
+              init_res ? init_res : get_default_value(v.type, loc), v.name);
         
         if (is_const)
           assert(llvm::isa<llvm::Constant>(A));
@@ -1129,8 +1129,9 @@ class FuncNode : public LeftExprNode, public INamedObject {
   proto_t proto; // it will be moved after codegen.
   block_t body; // what it will be calculated.
 
-  std::string name; // record its name to find its proto.
 public:
+  std::string name; // record its name to find its proto.
+
   FuncNode(proto_t proto, block_t body, SourceLoc loc)
     : proto(std::move(proto)), body(std::move(body)), name(this->proto->get_name()), LeftExprNode(loc) {  }
 

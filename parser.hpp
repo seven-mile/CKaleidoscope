@@ -9,6 +9,7 @@
 #include "lexer.hpp"
 #include "optimizer.hpp"
 
+#include <typeinfo>
 #include <algorithm>
 #include <any>
 #include <cassert>
@@ -578,7 +579,7 @@ public:
       return log_err("unexpected token, expected a ';'.");
     
     expand_comma_expr(std::move(decls), [this, ty, &lst](expr_t expr) {
-      std::pair<Var, expr_t> ele{{"", nullptr}, nullptr};
+      std::pair<Var, expr_t> ele{Var {"", nullptr}, nullptr};
       if (auto ptr = dynamic_cast<BinExprNode*>(expr.get())) {
         if (ptr->op != "=")
           log_err("invalid variable declaration syntax! expected '='.");

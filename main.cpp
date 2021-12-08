@@ -11,7 +11,6 @@
 
 #include <cassert>
 #include <llvm/Support/Host.h>
-#include <llvm/ExecutionEngine/JITSymbol.h>
 #include <llvm/IR/Verifier.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/raw_ostream.h>

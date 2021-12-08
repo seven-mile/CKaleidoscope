@@ -1,7 +1,7 @@
 #pragma once
 
-#include <llvm-12/llvm/IR/IRBuilder.h>
-#include <llvm-12/llvm/IR/LLVMContext.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Transforms/Scalar.h>
