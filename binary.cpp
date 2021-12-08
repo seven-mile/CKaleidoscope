@@ -53,10 +53,10 @@ static llvm::ToolOutputFile *GetOutputStream(const std::string &filename) {
 }
 
 static void CreateObject(llvm::Module *module, const std::string &objname) {
-  llvm::InitializeAllTargets();
-  llvm::InitializeAllTargetMCs();
-  llvm::InitializeAllAsmPrinters();
-  llvm::InitializeAllAsmParsers();
+   //llvm::InitializeAllTargets();
+   //llvm::InitializeAllTargetMCs();
+   //llvm::InitializeAllAsmPrinters();
+   //llvm::InitializeAllAsmParsers();
 
   std::string error;
   llvm::Triple triple = llvm::Triple(module->getTargetTriple());

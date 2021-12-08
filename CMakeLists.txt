@@ -33,7 +33,7 @@ execute_process(COMMAND llvm-config --cmakedir
 string(STRIP ${LLVM_DIR_OUTPUT} LLVM_DIR)
 message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
 
-find_package(LLVM REQUIRED CONFIG)
+find_package(LLVM 13 REQUIRED CONFIG)
 
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 
