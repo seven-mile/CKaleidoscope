@@ -47,7 +47,7 @@ add_executable(Sample test/sample.cpp)
 #                OUTPUT_VARIABLE llvm_libs)
 # string(STRIP ${llvm_libs} llvm_libs)
 
-llvm_map_components_to_libnames(llvm_libs support core bitreader irreader analysis native orcjit)
+llvm_map_components_to_libnames(llvm_libs support core bitreader irreader analysis native orcjit mcjit)
 
 message(STATUS "Use llvm_libs: ${llvm_libs}")
 
